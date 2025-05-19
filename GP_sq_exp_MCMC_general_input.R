@@ -37,7 +37,9 @@ compute_cov_mat_from_C <- function(C, dist_tensor_mat_reduced, n,
   # we only compute the upper diagonal
   dist_mat_C[upper.tri(dist_mat_C, diag = T)] <- test_distances
   # add a bit to diagonal for stability
-  cov_mat <- exp(- dist_mat_C/2) + diagonal_add
+  cov_mat <- exp(- dist_mat_C/2)
+  diag(cov_mat) <- diag(cov_mat) + diagonal_add
+  cov_mat
 }
 Cov_mat <- compute_cov_mat_from_C(C, dist_tensor_mat_reduced, n)
 
