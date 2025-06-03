@@ -5,7 +5,7 @@ C <- matrix(nrow = p, ncol = p, c(1, -.4, .2, -.4, 3, 1.8,.2, 1.8, 6))*25
 C
 set.seed(10)
 # sampled points
-n <- 200
+n <- 600
 x_obs <- matrix(ncol = p, nrow = n, runif(p*n))
 plot(x_obs)
 
@@ -68,7 +68,8 @@ ggplot(data = data.frame(x_obs, y)) +
 
 # implement the likelihood function: data | C, which is multivariate normal
 likelihood_C <- function(C, dist_tensor_mat_reduced, n,
-                         diagonal_add) {
+                         diagonal_add, compute_gradient = F, upper_tri_n = NULL, lower_tri_n = NULL,
+                         upper_tri_p = NULL, lower_tri_p = NULL) {
   Cov_mat <- compute_cov_mat_from_C(C, dist_tensor_mat_reduced, n,
                                     diagonal_add)
   # The following is the equivalent of mvtnorm::dmvnorm
@@ -82,8 +83,38 @@ likelihood_C <- function(C, dist_tensor_mat_reduced, n,
   det_Cov_mat <- 2*sum(log(diag(chol_Cov_mat)))
   
   #quadratic form y^T Sigma^-1 y = y^T (L L^T)^-1 y = y^T L^(-T) L^(-1) y 
-  cross_Cov_mat <- sum(backsolve(r = chol_Cov_mat, x = y,
-                                 upper.tri = T, transpose = T)^2)
+  backsolved_val <- backsolve(r = chol_Cov_mat, x = y,
+                              upper.tri = T, transpose = T)
+  cross_Cov_mat <- sum(backsolved_val^2)
+  
+
+  if (compute_gradient) { 
+    backsolved_val_x2 <- backsolve(r = chol_Cov_mat, x = backsolved_val,
+                                upper.tri = T, transpose = F)
+    Cov_mat[lower_tri_n] <-  t(Cov_mat)[lower_tri_n]
+    
+    deriv_mat <- lapply(1:p, function(i) {
+      lapply(1:i, function(j) {
+        matrix_11 <- matrix(0, n, n)
+        matrix_11[upper_tri_n] <- dist_tensor_mat_reduced[,i] * dist_tensor_mat_reduced[,j]
+        matrix_11[lower_tri_n] <-  t(matrix_11)[lower_tri_n]
+        - 1/2 * Cov_mat * matrix_11
+      })
+    })
+    cov_mat_solve <- chol2inv(chol_Cov_mat)
+    
+    grad_values <-  sapply(1:p, function(i) {
+      sapply(1:i, function(j) {
+        1/2 * t(backsolved_val_x2) %*% deriv_mat[[i]][[j]] %*% backsolved_val_x2 - 1/2 *
+          sum(rowSums( cov_mat_solve * deriv_mat[[i]][[j]]))
+      })
+    })
+    gradient_mat <- matrix(nrow = p, ncol = p)
+    gradient_mat[upper_tri_p] <- unlist(grad_values)
+    gradient_mat[lower_tri_p] <-  t(gradient_mat)[lower_tri_p]
+    return(list(likelihood = -1/2 * ( n * log(2*pi) + det_Cov_mat + cross_Cov_mat), 
+                gradient = gradient_mat))
+  }
   
   # multivariate normal log likelihood:
   -1/2 * ( n * log(2*pi) + det_Cov_mat + cross_Cov_mat)
@@ -150,12 +181,11 @@ prior_C <- matrix(nrow = p, ncol = p , c(30, 20, 20,
                                          20, 80, 20, 
                                          20, 20, 160))
 #prior_C <- C
-df_prior <- p + 10 # degrees of freedom
+df_prior <- p + 5 # degrees of freedom
 
 MC <- 
   5000 # number of Monte carlo iterations
 C_MCMC <- array(dim = c(p, p, MC))
-C_MCMC[,,1] <- diag(100, nrow = p)
 C_MCMC[,,1] <- diag(100 + rnorm(p), nrow = p)
 #C_MCMC[,,1] <- C # initial start
 accept_prob <- rep(0, MC)
@@ -280,5 +310,103 @@ vectors_cos_sim <- apply(C_MCMC, 3, function(x) sum(eigen(x)$vectors[,2] * eigen
                            sqrt(sum(eigen(x)$vectors[,2]^2) * sum(eigen(C)$vectors[,2]^2)))
 hist(vectors_cos_sim)
 hist(abs(vectors_cos_sim))
+
+
+# compute derivatives
+upper_tri_p <- upper.tri(matrix(nrow = p, ncol = p), diag = T)
+lower_tri_p <- lower.tri(matrix(nrow = p, ncol = p), diag = F)
+upper_tri_n <- upper.tri(matrix(nrow = n, ncol = n), diag = T)
+lower_tri_n <- lower.tri(matrix(nrow = n, ncol = n), diag = F)
+# implement the likelihood function: data | C, which is multivariate normal
+likelihood_C(C, dist_tensor_mat_reduced, n,
+             diagonal_add, compute_gradient = T, upper_tri_n = upper_tri_n, lower_tri_n = lower_tri_n,
+             upper_tri_p = upper_tri_p, lower_tri_p = lower_tri_p) 
+
+MC <-1000
+gradient_vals <- array(dim = c(p, p, MC))
+
+C_MCMC <- array(dim = c(p, p, MC))
+C_MCMC[,,1] <- diag(100 + rnorm(p), nrow = p)
+#C_MCMC[,,1] <- C # initial start
+accept_prob <- rep(0, MC)
+accept <- rep(0, MC)
+
+# prior and likelihood values at initialization
+prior <- 'ShrinkageInvWishart'
+# prior and likelihood values at initialization
+if (prior == 'InvWishart') {
+  prior_prev <- CholWishart::dInvWishart(C_MCMC[,,1] / df_prior, 
+                                         Sigma = prior_C, df = df_prior,
+                                         log = T)
+} else if (prior == 'ShrinkageInvWishart') {
+  eigen_C <- eigen(C_MCMC[,,1] / df_prior)$values
+  eigen_C_mat <- matrix(eigen_C, nrow = p, ncol = p) - matrix(eigen_C, nrow = p, ncol = p, byrow = T)
+  upper_tri_part <- upper.tri(eigen_C_mat, diag = F)
+  prior_prev <- CholWishart::dInvWishart(C_MCMC[,,1] / df_prior, 
+                                         Sigma = prior_C, df = df_prior,
+                                         log = T) + 
+    -sum(log(eigen_C_mat[upper_tri_part]))
+}
+likelihood_value_prev <- likelihood_C(C_MCMC[,,1], 
+                                      dist_tensor_mat_reduced, n,
+                                      diagonal_add = .00001)
+
+df_prop <- p + 1000 # degrees of freedom for proposal distribution
+
+
+
+for (mc in 2:MC) {
+  
+  # propose next sample
+  C_prop <- rWishart(n = 1, df = df_prop, C_MCMC[,,mc - 1])[,,1]/df_prop
+  
+  # compute log-likelihood/prior for proposed C
+  likelihood_list <- likelihood_C(C_prop, dist_tensor_mat_reduced, n,
+                                  diagonal_add = .00001,
+                                  compute_gradient = T, upper_tri_n = upper_tri_n, lower_tri_n = lower_tri_n,
+                                  upper_tri_p = upper_tri_p, lower_tri_p = lower_tri_p)
+  likelihood_value_prop <- likelihood_list[['likelihood']]
+  gradient_vals[,,mc] <- likelihood_list[['gradient']]
+  if (prior == 'InvWishart') {
+    prior_prop <- CholWishart::dInvWishart(C_prop / df_prior, 
+                                           Sigma = prior_C, df = df_prior,
+                                           log = T)
+  } else if (prior == 'ShrinkageInvWishart') {
+    eigen_C <- eigen(C_prop / df_prior)$values
+    prior_prop <- CholWishart::dInvWishart(C_prop / df_prior, 
+                                           Sigma = prior_C, df = df_prior,
+                                           log = T) -
+      sum(log(eigen_C_mat[upper_tri_part]))
+  }
+  # adjustment for MCMC
+  q_prop_prev <- CholWishart::dWishart(C_prop * df_prop, Sigma = C_MCMC[,,mc - 1], df = df_prop,
+                                       log = T)
+  q_prev_prop <- CholWishart::dWishart(C_MCMC[,,mc - 1] * df_prop, Sigma = C_prop, df = df_prop,
+                                       log = T)
+  
+  accept_prob[mc] <- exp(likelihood_value_prop - likelihood_value_prev + 
+                           prior_prop - prior_prev +
+                           q_prev_prop - q_prop_prev)
+  accept_prob[mc] <- ifelse(accept_prob[mc] > 1, 1, accept_prob[mc])
+  if (runif(1) < accept_prob[mc]) {
+    C_MCMC[,,mc] <- C_prop
+    accept[mc] <- 1
+    likelihood_value_prev <- likelihood_value_prop
+    prior_prev <- prior_prop
+  } else {
+    C_MCMC[,,mc] <- C_MCMC[,,mc - 1] 
+  }
+  print(likelihood_value_prop + prior_prop)
+  print(C_MCMC[,,mc])
+}
+
+dim(gradient_vals)
+
+plot(gradient_vals[1,1,])
+plot(gradient_vals[2,1,])
+plot(gradient_vals[3,1,])
+plot(gradient_vals[2,2,])
+plot(gradient_vals[3,2,])
+plot(gradient_vals[3,3,])
 
 
