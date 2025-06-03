@@ -322,6 +322,17 @@ likelihood_C(C, dist_tensor_mat_reduced, n,
              diagonal_add, compute_gradient = T, upper_tri_n = upper_tri_n, lower_tri_n = lower_tri_n,
              upper_tri_p = upper_tri_p, lower_tri_p = lower_tri_p) 
 
+# derivative of log Inverse Wishart density
+dInvWishart_deriv <- function(C, prior_mat, nu_dof) {
+  C_inv <- solve(C)
+  - (nu_dof - nrow(C) + 1) * C_inv + (1/2) * C_inv %*% prior_mat %*% C_inv 
+} 
+dInvWishart_deriv(C, df_prior * prior_C, df_prior)
+dInvWishart_deriv(prior_C,  df_prior * prior_C, df_prior)
+dInvWishart_deriv(C_MCMC_with_burn_in[,,1], df_prior * prior_C, df_prior)
+C
+prior_C
+
 MC <-1000
 gradient_vals <- array(dim = c(p, p, MC))
 
@@ -366,7 +377,8 @@ for (mc in 2:MC) {
                                   compute_gradient = T, upper_tri_n = upper_tri_n, lower_tri_n = lower_tri_n,
                                   upper_tri_p = upper_tri_p, lower_tri_p = lower_tri_p)
   likelihood_value_prop <- likelihood_list[['likelihood']]
-  gradient_vals[,,mc] <- likelihood_list[['gradient']]
+  gradient_vals[,,mc] <- likelihood_list[['gradient']] + 
+    dInvWishart_deriv(C_prop, df_prior * prior_C, df_prior)
   if (prior == 'InvWishart') {
     prior_prop <- CholWishart::dInvWishart(C_prop / df_prior, 
                                            Sigma = prior_C, df = df_prior,
