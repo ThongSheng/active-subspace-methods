@@ -104,6 +104,9 @@ likelihood_function <- function(par, dist_tensor_mat_reduced, n,
                         sqrt(diagonal_C[1] * diagonal_C[3]) *par[4],
                         sqrt(diagonal_C[2] * diagonal_C[3]) *par[5],
                         diagonal_C[3]))
+  if (min(eigen(C_mat_use)$value) < 10^-6) {
+    return(10^6)
+  }
   print(C_mat_use)
   ll_val <- likelihood_C(C_mat_use, dist_tensor_mat_reduced, n,
                          diagonal_add)
@@ -153,14 +156,27 @@ MC <-
   5000 # number of Monte carlo iterations
 C_MCMC <- array(dim = c(p, p, MC))
 C_MCMC[,,1] <- diag(100, nrow = p)
+C_MCMC[,,1] <- diag(100 + rnorm(p), nrow = p)
 #C_MCMC[,,1] <- C # initial start
 accept_prob <- rep(0, MC)
 accept <- rep(0, MC)
 
 # prior and likelihood values at initialization
-prior_prev <- CholWishart::dInvWishart(C_MCMC[,,1] / df_prior, 
-                                       Sigma = prior_C, df = df_prior,
-                                       log = T)
+prior <- 'ShrinkageInvWishart'
+# prior and likelihood values at initialization
+if (prior == 'InvWishart') {
+  prior_prev <- CholWishart::dInvWishart(C_MCMC[,,1] / df_prior, 
+                                         Sigma = prior_C, df = df_prior,
+                                         log = T)
+} else if (prior == 'ShrinkageInvWishart') {
+  eigen_C <- eigen(C_MCMC[,,1] / df_prior)$values
+  eigen_C_mat <- matrix(eigen_C, nrow = p, ncol = p) - matrix(eigen_C, nrow = p, ncol = p, byrow = T)
+  upper_tri_part <- upper.tri(eigen_C_mat, diag = F)
+  prior_prev <- CholWishart::dInvWishart(C_MCMC[,,1] / df_prior, 
+                                         Sigma = prior_C, df = df_prior,
+                                         log = T) + 
+    -sum(log(eigen_C_mat[upper_tri_part]))
+}
 likelihood_value_prev <- likelihood_C(C_MCMC[,,1], 
                                       dist_tensor_mat_reduced, n,
                                       diagonal_add = .00001)
@@ -175,10 +191,17 @@ for (mc in 2:MC) {
   # compute log-likelihood/prior for proposed C
   likelihood_value_prop <- likelihood_C(C_prop, dist_tensor_mat_reduced, n,
                                         diagonal_add = .00001)
-  prior_prop <- CholWishart::dInvWishart(C_prop / df_prior, 
-                                         Sigma = prior_C, df = df_prior,
-                                         log = T)
-  
+  if (prior == 'InvWishart') {
+    prior_prop <- CholWishart::dInvWishart(C_prop / df_prior, 
+                                           Sigma = prior_C, df = df_prior,
+                                           log = T)
+  } else if (prior == 'ShrinkageInvWishart') {
+    eigen_C <- eigen(C_prop / df_prior)$values
+    prior_prop <- CholWishart::dInvWishart(C_prop / df_prior, 
+                                           Sigma = prior_C, df = df_prior,
+                                           log = T) -
+      sum(log(eigen_C_mat[upper_tri_part]))
+  }
   # adjustment for MCMC
   q_prop_prev <- CholWishart::dWishart(C_prop * df_prop, Sigma = C_MCMC[,,mc - 1], df = df_prop,
                                        log = T)
