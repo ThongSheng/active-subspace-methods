@@ -24,7 +24,7 @@ C
 data_input <- list(y = y, N = n, R = diag(x = 1, nrow = p), # prior
                    k=p, mu0 = rep(0, p),
                    prior_lgn_mean = rep(log(1), p), 
-                   prior_lgn_var = rep(log(100), p),
+                   prior_lgn_var = rep(log(100)^2, p),
                    prior_dof = p + 3)
 out_ln_iw_mvn <- sampling(object=m_ss.lniw_mvn, data = data_input,
                           pars= c('Sigma'), iter = it, chains = 3, warmup=w)
@@ -98,7 +98,7 @@ C
 data_input_gp <- list(y = y[1:n_subset], N = n_subset, R = diag(x = 1, nrow = 2), # prior
                       k=2, mu0 = rep(0,n_subset), locs = x_obs[1:n_subset,],
                       prior_lgn_mean = rep(log(1), p), 
-                      prior_lgn_var = rep(log(100), p),
+                      prior_lgn_var = rep(log(100)^2, p),
                       prior_dof = p + 3, diag_add = diag_add)
 out_lniw_gp <- sampling(object=m_ss.lniw_gp, data = data_input_gp,
                         pars= c('Sigma'), iter = it, chains = 3, warmup=w)
@@ -121,7 +121,7 @@ ggplot(data = data.frame(x_obs, y )[1:n_subset,], aes(x = X1, X2, color = y)) +
 data_input_gp_rescale <- list(y = y[1:n_subset], N = n_subset, R = diag(x = 1, nrow = 2), # prior
                               k=2, mu0 = rep(0,n_subset), locs = x_obs[1:n_subset,],
                               prior_lgn_mean = array(rep(log(.5), p-1)), 
-                              prior_lgn_var = array(rep(log(100), p-1)),
+                              prior_lgn_var = array(rep(log(100)^2, p-1)),
                               prior_dof = p + 3,
                               prior_rescale_mean = log(1), 
                               prior_rescale_var = log(2), diag_add = .00001)
