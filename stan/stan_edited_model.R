@@ -131,9 +131,9 @@ transformed parameters {
 model {
     Q1 ~ inv_wishart(prior_dof, R);
     for (i in 1:(k-1)) {
-        xi[i] ~ normal(prior_lgn_mean[i], prior_lgn_var[i]);
+        xi[i] ~ normal(prior_lgn_mean[i], sqrt(prior_lgn_var[i]));
     }
-    K ~ normal(prior_rescale_mean, prior_rescale_var);
+    K ~ normal(prior_rescale_mean, sqrt(prior_rescale_var));
   for (n in 1:N) y[n] ~ multi_normal(mu0, Sigma);
 }
 "
@@ -151,6 +151,7 @@ data {
   vector[k] prior_lgn_mean;
   vector[k] prior_lgn_var;
   real <lower=0> prior_dof;
+  real <lower=0> diag_add;
 }
 parameters {
   cov_matrix[k] Q1;
@@ -193,15 +194,12 @@ transformed parameters {
       Sigma[m,n] <- Sigma[n,m];
     }
   }
-  s1 <- sqrt( Sigma[1,1]);
-  s2 <- sqrt(Sigma[2,2]) ;
-  rho <-  Sigma[1,2] /(s1*s2);
   
   for (i in 1:N) {
     for (m in 1:i) {
       Sigma_gp[m,i] <- exp(- (locs[i,]- locs[m,]) * Sigma * (locs[i,]- locs[m,])' /2 ); 
     }
-    Sigma_gp[i,i] <- Sigma_gp[i,i] + .00001;
+    Sigma_gp[i,i] <- Sigma_gp[i,i] + diag_add;
   }
 
   for (n in 1:N) {
@@ -213,7 +211,7 @@ transformed parameters {
 model {
     Q1 ~ inv_wishart(prior_dof, R);
     for ( i in 1:k) {
-        xi[i] ~ normal(prior_lgn_mean[i], prior_lgn_var[i]);
+        xi[i] ~ normal(prior_lgn_mean[i], sqrt(prior_lgn_var[i]));
     }
   y ~ multi_normal(mu0, Sigma_gp);
 }
@@ -235,6 +233,7 @@ data {
   real <lower=0> prior_dof;
   real prior_rescale_mean;
   real prior_rescale_var;
+  real <lower=0> diag_add;
 }
 parameters {
   cov_matrix[k] Q1;
@@ -287,7 +286,7 @@ transformed parameters {
     for (m in 1:i) {
       Sigma_gp[m,i] <- exp(- (locs[i,]- locs[m,]) * Sigma * (locs[i,]- locs[m,])' /2 ); 
     }
-    Sigma_gp[i,i] <- Sigma_gp[i,i] + .0000001;
+    Sigma_gp[i,i] <- Sigma_gp[i,i] + diag_add;
   }
 
   for (n in 1:N) {
@@ -299,9 +298,9 @@ transformed parameters {
 model {
     Q1 ~ inv_wishart(prior_dof, R);
     for ( i in 1:(k-1)) {
-        xi[i] ~ normal(prior_lgn_mean[i], prior_lgn_var[i]);
+        xi[i] ~ normal(prior_lgn_mean[i], sqrt(prior_lgn_var[i]));
     }
-    K ~ normal(prior_rescale_mean, prior_rescale_var);
+    K ~ normal(prior_rescale_mean, sqrt(prior_rescale_var));
   y ~ multi_normal(mu0, Sigma_gp);
 }
 "
