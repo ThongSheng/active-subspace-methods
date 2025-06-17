@@ -552,16 +552,22 @@ visualize(CGP_grad_n, 1, 1, C)
 set.seed(123)
 p <- 2
 C <- matrix(1/45*c(120, 50, 50, 21), nrow=p)
-scale_list <- list("identity" = diag(p), "identity*2" = 2*diag(p), "Ctrue" = C, "Ctrue*2" = 2*C)
-n <- 300
+scale_list <- list("identity" = diag(p), 
+                   "Ctrue" = C,
+                   "Ctrue/10" = C/10, 
+                   "Ctrue/5" = C/5,
+                   "Ctrue/2" = C/2,
+                   "Ctrue*2" = C*2, 
+                   "Ctrue*5" = C*5,
+                   "Ctrue*10" = C*10)
+n <- 180
 lower_lbfgsb <- c(log(0.01), -1, log(0.01))
 upper_lbfgsb <- c(log(10), 1, log(10))
-iters <- 3
+iters <- 30
 CGP_grad_scale <- list()
 CGP_grad_scale_time <- list()
 
-compute_grad_cov_mat_from_C <- function(C, dist_tensor_mat, n,
-                                        diagonal_add = .00001) {
+compute_grad_cov_mat_from_C <- function(C, dist_tensor_mat, n, diagonal_add = .00001) {
   # what we want is the diagonal of 
   # dist_tensor_mat %*% C %*% t(dist_tensor_mat)
   # the rowsums approach computes only the diagonal of this matrix
