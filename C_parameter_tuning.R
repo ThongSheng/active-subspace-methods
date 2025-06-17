@@ -1,34 +1,16 @@
 library(CholWishart)
-library(ggplot2)
 library(reshape2)
 library(mvtnorm)
 library(tictoc)
-
-visualize <- function(data, entry_row, entry_col) {
-  param <- names(data)[4]
-  Ctrue <- matrix(1/45*c(120, 50, 50, 21), nrow=p)
-  ggplot(subset(data, row == entry_row & column == entry_col), 
-         aes(x = factor(.data[[param]]), y = value, fill = factor(.data[[param]]))) +
-    geom_violin(scale = "width", trim = FALSE) +
-    geom_hline(yintercept = Ctrue[entry_row, entry_col],
-               col = "red", linetype = "dashed", linewidth = 1) +
-    labs(x = param, 
-         y = "Entry value", 
-         title = sprintf("Distribution of [%s,%s] Matrix Entry Across Iterations", entry_row, entry_col),
-         subtitle = sprintf("True value: %.2f (red dashed line)", Ctrue[entry_row, entry_col])) +
-    theme_minimal() +
-    theme(legend.position = "none",
-          axis.text.x = element_text(angle = 45, hjust = 1)) +
-    scale_fill_viridis_d()
-}
+library(dplyr)
 
 ###############################
 #      CBASS (varying n)      #
 ###############################
 set.seed(123)
-f <- function(x) x[1]^2 + x[1]*x[2] + x[2]^3/9
 p <- 2
 n_list <- seq(20, 300, 40)
+C <- matrix(1/45*c(120, 50, 50, 21), nrow=p)
 iters <- 50
 CBASS_n <- list()
 CBASS_n_time <- list()
@@ -37,8 +19,21 @@ for (iter_val in 1:iters) {
   for (n_val in n_list) {
     tic()
     Xunif <- matrix(runif(n_val*p), nrow=n_val, ncol=p)
-    y <- apply(Xunif, 1, f)
     
+    # create covariance matrix with squared exponential kernel and anisotropy matrix C
+    unscaled_dist1 <- matrix(Xunif[,1], nrow = n_val, ncol = n_val) - matrix(Xunif[,1], nrow = n_val, ncol = n_val, byrow = T)
+    unscaled_dist2 <- matrix(Xunif[,2], nrow = n_val, ncol = n_val) - matrix(Xunif[,2], nrow = n_val, ncol = n_val, byrow = T)
+    dist_sq_mat <- unscaled_dist1^2 *C[1,1] + 
+      unscaled_dist2^2 *C[2,2] + 
+      unscaled_dist2 * unscaled_dist1 *C[1,2] +
+      unscaled_dist2 * unscaled_dist1 *C[2,1]
+    Cov_mat_true <- exp(-dist_sq_mat/2)
+    diag(Cov_mat_true) <- diag(Cov_mat_true) + .00001 # add jitter to ensure Cov_mat is invertible
+    
+    # sample data from multivariate normal (assuming the squared-exponential is the "correct" model)
+    y <- as.vector(rmvnorm(n = 1, sigma = Cov_mat_true))
+    
+    # create bass model
     mod_bass <- bass(Xunif, y, verbose=TRUE)
     CBass <- C_bass(mod_bass)
     timing <- toc(quiet = TRUE)
@@ -62,13 +57,33 @@ visualize(CBASS_n, 1, 1)
 #   Cconjugate (varying df)   #
 ###############################
 set.seed(123)
-grad_f <- function(x) c(2*x[1] + x[2], x[1] + (1/3)*x[2]^2)
 p <- 2
 n <- 300
 df_list <- seq(p+2,300,20)
+C <- matrix(1/45*c(120, 50, 50, 21), nrow=p)
 iters <- 50
 Cconj_df <- list()
 Cconj_df_time <- list()
+
+compute_grad_cov_mat_from_C <- function(C, dist_tensor_mat, n, diagonal_add = .00001) {
+  test_distances <- matrix(rowSums((dist_tensor_mat %*% C) * dist_tensor_mat), n, n)
+  exp_mat <- exp(-test_distances/2)
+  NA_mat <- matrix(NA, p, p)
+  all_mats <- lapply(1:n, 
+                     function(i) {lapply(1:n, function(j) {
+                       if (j < i) {
+                         return(NA_mat) # for the lower triangle, do not compute, saves computation time
+                       } else {
+                         mat <- - ((C %*% dist_tensor_mat_reduced_crossprod[[i]][[j]] %*% C - C)*exp_mat[i,j])
+                         if (i == j) {
+                           diag(mat) <- diag(mat) + diagonal_add
+                         }
+                         return(mat)
+                       }})
+                     })
+  # combine all matrices into one pn times pn matrix
+  cov_mat <- do.call(rbind, lapply(all_mats, function(x) do.call(cbind, x)))
+}
 
 for (iter_val in 1:iters) {
   for (df_val in df_list) {
@@ -78,8 +93,20 @@ for (iter_val in 1:iters) {
     Scale_prior <- diag(p) * df_prior
     
     # Generate data and calculate gradient
-    X <- matrix(runif(n * p), nrow = n, ncol = p)
-    grad <- t(apply(X, 1, grad_f))
+    Xunif <- matrix(runif(n * p), nrow = n, ncol = p)
+    dist_tensor <- array(dim = c(n, n, p))
+    for (j in 1:p) {
+      dist_tensor[,,j] <- matrix(Xunif[,j], nrow = n, ncol = n) - matrix(Xunif[,j], nrow = n, ncol = n, byrow = T)
+    }
+    dist_tensor_mat <- matrix(as.vector(dist_tensor), nrow = n^2, ncol = p)
+    dist_tensor_mat_reduced_crossprod <- lapply(1:n, 
+                                                function(i) lapply(1:n, function(j) {
+                                                  tcrossprod(dist_tensor[i,j,])
+                                                }))
+    Cov_mat <- compute_grad_cov_mat_from_C(C, dist_tensor_mat, n)
+    chol_Cov_mat <- chol(Cov_mat)
+    y <- t(chol_Cov_mat) %*% rnorm(n * p)
+    grad <- matrix(y, nrow = n, ncol = p, byrow = TRUE)
     S <- crossprod(grad)
     
     # Posterior parameters
@@ -87,7 +114,7 @@ for (iter_val in 1:iters) {
     df_posterior <- df_prior + n
     
     # Posterior sampling
-    posterior_samples <- rInvWishart(n, df_posterior, Scale_posterior)
+    posterior_samples <- rInvWishart(10000, df_posterior, Scale_posterior)
     Cconj <- apply(posterior_samples, 1:2, mean)
     timing <- toc(quiet = TRUE)
     
@@ -112,24 +139,55 @@ visualize(Cconj_df, 1, 1)
 #    Cconjugate (varying n)   #
 ###############################
 set.seed(123)
-grad_f <- function(x) c(2*x[1] + x[2], x[1] + (1/3)*x[2]^2)
 p <- 2
 n_list <- seq(20, 300, 40)
-df <- p + 2
-iters <- 50
+C <- matrix(1/45*c(120, 50, 50, 21), nrow=p)
+iters <- 100
 Cconj_n <- list()
 Cconj_n_time <- list()
+
+compute_grad_cov_mat_from_C <- function(C, dist_tensor_mat, n, diagonal_add = .00001) {
+  test_distances <- matrix(rowSums((dist_tensor_mat %*% C) * dist_tensor_mat), n, n)
+  exp_mat <- exp(-test_distances/2)
+  NA_mat <- matrix(NA, p, p)
+  all_mats <- lapply(1:n, 
+                     function(i) {lapply(1:n, function(j) {
+                       if (j < i) {
+                         return(NA_mat) # for the lower triangle, do not compute, saves computation time
+                       } else {
+                         mat <- - ((C %*% dist_tensor_mat_reduced_crossprod[[i]][[j]] %*% C - C)*exp_mat[i,j])
+                         if (i == j) {
+                           diag(mat) <- diag(mat) + diagonal_add
+                         }
+                         return(mat)
+                       }})
+                     })
+  # combine all matrices into one pn times pn matrix
+  cov_mat <- do.call(rbind, lapply(all_mats, function(x) do.call(cbind, x)))
+}
 
 for (iter_val in 1:iters) {
   for (n_val in n_list) {
     # Prior parameters
     tic()
-    df_prior <- p+2
+    df_prior <- p + 10
     Scale_prior <- diag(p) * df_prior
     
     # Generate data and calculate gradient
-    X <- matrix(runif(n_val * p), nrow = n_val, ncol = p)
-    grad <- t(apply(X, 1, grad_f))
+    Xunif <- matrix(runif(n_val * p), nrow = n_val, ncol = p)
+    dist_tensor <- array(dim = c(n_val, n_val, p))
+    for (j in 1:p) {
+      dist_tensor[,,j] <- matrix(Xunif[,j], nrow = n_val, ncol = n_val) - matrix(Xunif[,j], nrow = n_val, ncol = n_val, byrow = T)
+    }
+    dist_tensor_mat <- matrix(as.vector(dist_tensor), nrow = n_val^2, ncol = p)
+    dist_tensor_mat_reduced_crossprod <- lapply(1:n_val, 
+                                                function(i) lapply(1:n_val, function(j) {
+                                                  tcrossprod(dist_tensor[i,j,])
+                                                }))
+    Cov_mat <- compute_grad_cov_mat_from_C(C, dist_tensor_mat, n_val)
+    chol_Cov_mat <- chol(Cov_mat)
+    y <- t(chol_Cov_mat) %*% rnorm(n_val * p)
+    grad <- matrix(y, nrow = n_val, ncol = p, byrow = TRUE)
     S <- crossprod(grad)
     
     # Posterior parameters
@@ -137,7 +195,7 @@ for (iter_val in 1:iters) {
     df_posterior <- df_prior + n_val
     
     # Posterior sampling
-    posterior_samples <- rInvWishart(n_val, df_posterior, Scale_posterior)
+    posterior_samples <- rInvWishart(10000, df_posterior, Scale_posterior)
     Cconj <- apply(posterior_samples, 1:2, mean)
     timing <- toc(quiet = TRUE)
     
@@ -253,7 +311,14 @@ visualize(CGP_n, 1, 1)
 set.seed(123)
 p <- 2
 C <- matrix(1/45*c(120, 50, 50, 21), nrow=p)
-scale_list <- list("identity" = diag(p), "identity*2" = 2*diag(p), "Ctrue" = C, "Ctrue*2" = 2*C)
+scale_list <- list("identity" = diag(p), 
+                   "Ctrue" = C,
+                   "Ctrue/10" = C/10, 
+                   "Ctrue/5" = C/5,
+                   "Ctrue/2" = C/2,
+                   "Ctrue*2" = C*2, 
+                   "Ctrue*5" = C*5,
+                   "Ctrue*10" = C*10)
 n <- 300
 lower_lbfgsb <- c(log(0.01), -1, log(0.01))
 upper_lbfgsb <- c(log(10), 1, log(10))
@@ -319,6 +384,18 @@ for (iter_val in 1:iters) {
                                likelihood_optim$par[2]*sqrt(exp(likelihood_optim$par[1]))*sqrt(exp(likelihood_optim$par[3])), 
                                likelihood_optim$par[2]*sqrt(exp(likelihood_optim$par[1]))*sqrt(exp(likelihood_optim$par[3])), 
                                exp(likelihood_optim$par[3])))
+    
+    # Normalize results
+    operator <- str_extract(scale_val, "[*/]")
+    number <- as.numeric(str_extract(scale_val, "\\d+$"))
+    if (!is.na(operator) && !is.na(number)) {
+      if (operator == "/") {
+        likelihood_est <- likelihood_est * number
+      } else if (operator == "*") {
+        likelihood_est <- likelihood_est / number
+      }
+    }
+    
     timing <- toc(quiet = TRUE)
     
     elapsed <- timing$toc - timing$tic
@@ -345,30 +422,22 @@ visualize(CGP_scale, 1, 1)
 set.seed(123)
 p <- 2
 C <- matrix(1/45*c(120, 50, 50, 21), nrow=p)
-n_list <- seq(20, 300, 40)
-iters <- 3
+lower_lbfgsb <- c(log(0.01), -1, log(0.01))
+upper_lbfgsb <- c(log(10), 1, log(10))
+n_list <- seq(20, 180, 40) # reduced sample size for faster computation
+iters <- 50
 CGP_grad_n <- list()
 CGP_grad_n_time <- list()
 
-compute_grad_cov_mat_from_C <- function(C, dist_tensor_mat, n,
-                                        diagonal_add = .00001) {
-  # what we want is the diagonal of 
-  # dist_tensor_mat %*% C %*% t(dist_tensor_mat)
-  # the rowsums approach computes only the diagonal of this matrix
-  test_distances <- matrix(rowSums((dist_tensor_mat %*% C) *
-                                     dist_tensor_mat), n, n)
-  
+compute_grad_cov_mat_from_C <- function(C, dist_tensor_mat, n, diagonal_add = .00001) {
+  test_distances <- matrix(rowSums((dist_tensor_mat %*% C) * dist_tensor_mat), n, n)
   exp_mat <- exp(- test_distances/2)
   NA_mat <- matrix(NA, p, p)
-  # for each i,j combination, 
-  # Compute p times p matrix
-  # -(C * (theta_i - theta_j) *(theta_i - theta_j)^T * C - C) *k(theta_i, theta_j)
   
   all_mats <- lapply(1:n, 
                      function(i) {lapply(1:n, function(j) {
                        if (j < i) {
-                         return(NA_mat) # for the lower triangle, do not compute
-                         # saves computation time
+                         return(NA_mat) # do not compute lower triangle, saves computation time
                        } else {
                          mat <- - ((C %*% dist_tensor_mat_reduced_crossprod[[i]][[j]] %*% C - C)*
                                      exp_mat[i,j])
@@ -429,15 +498,8 @@ for (iter_val in 1:iters) {
                                                 }))
     
     Cov_mat <- compute_grad_cov_mat_from_C(C, dist_tensor_mat, n_val)
-    
-    
-    # sample data from multivariate normal
-    # we are assuming the squared-exponential is the "correct" model
-    # use cholesky to only use upper triangle
     chol_Cov_mat <- chol(Cov_mat)
-    #y <- as.vector(rmvnorm(n = 1, sigma = Cov_mat))
     y <- t(chol_Cov_mat) %*% rnorm(n_val * p)
-    
     
     # will get messier for larger p
     likelihood_function <- function(par, dist_tensor_mat, n,
@@ -481,7 +543,7 @@ for (iter_val in 1:iters) {
 CGP_grad_n <- do.call(rbind, CGP_grad_n)
 CGP_grad_n_time <- do.call(rbind, CGP_grad_n_time)
 
-visualize(CGP_grad_n, 1, 1)
+visualize(CGP_grad_n, 1, 1, C)
 
 
 #################################
