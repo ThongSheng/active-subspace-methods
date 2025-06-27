@@ -3,6 +3,7 @@ library(reshape2)
 library(mvtnorm)
 library(tictoc)
 library(dplyr)
+library(stringr)
 
 ###############################
 #      CBASS (varying n)      #
@@ -49,8 +50,6 @@ for (iter_val in 1:iters) {
     CBASS_n <- rbind(CBASS_n, temp)
   }
 }
-
-visualize(CBASS_n, 1, 1)
 
 
 ###############################
@@ -132,8 +131,6 @@ for (iter_val in 1:iters) {
   }
 }
 
-visualize(Cconj_df, 1, 1)
-
 
 ###############################
 #    Cconjugate (varying n)   #
@@ -212,8 +209,6 @@ for (iter_val in 1:iters) {
     Cconj_n <- rbind(Cconj_n, temp)
   }
 }
-
-visualize(Cconj_n, 1, 1)
 
 
 ########################
@@ -301,8 +296,6 @@ for (iter_val in 1:iters) {
 
 CGP_n <- do.call(rbind, CGP_n)
 CGP_n_time <- do.call(rbind, CGP_n_time)
-
-visualize(CGP_n, 1, 1)
 
 
 ############################
@@ -412,8 +405,6 @@ for (iter_val in 1:iters) {
 
 CGP_scale <- do.call(rbind, CGP_scale)
 CGP_scale_time <- do.call(rbind, CGP_scale_time)
-
-visualize(CGP_scale, 1, 1)
 
 
 #############################
@@ -543,8 +534,6 @@ for (iter_val in 1:iters) {
 CGP_grad_n <- do.call(rbind, CGP_grad_n)
 CGP_grad_n_time <- do.call(rbind, CGP_grad_n_time)
 
-visualize(CGP_grad_n, 1, 1, C)
-
 
 #################################
 #    CGP_grad (varying scale)   #
@@ -560,7 +549,7 @@ scale_list <- list("identity" = diag(p),
                    "Ctrue*2" = C*2, 
                    "Ctrue*5" = C*5,
                    "Ctrue*10" = C*10)
-n <- 180
+n <- 120 # reduced for faster computation
 lower_lbfgsb <- c(log(0.01), -1, log(0.01))
 upper_lbfgsb <- c(log(10), 1, log(10))
 iters <- 30
@@ -683,6 +672,18 @@ for (iter_val in 1:iters) {
                                likelihood_optim$par[2]*sqrt(exp(likelihood_optim$par[1]))*sqrt(exp(likelihood_optim$par[3])), 
                                likelihood_optim$par[2]*sqrt(exp(likelihood_optim$par[1]))*sqrt(exp(likelihood_optim$par[3])), 
                                exp(likelihood_optim$par[3])))
+    
+    # Normalize results
+    operator <- str_extract(scale_val, "[*/]")
+    number <- as.numeric(str_extract(scale_val, "\\d+$"))
+    if (!is.na(operator) && !is.na(number)) {
+      if (operator == "/") {
+        likelihood_est <- likelihood_est * number
+      } else if (operator == "*") {
+        likelihood_est <- likelihood_est / number
+      }
+    }
+    
     timing <- toc(quiet = TRUE)
     
     elapsed <- timing$toc - timing$tic
@@ -699,8 +700,6 @@ for (iter_val in 1:iters) {
 
 CGP_grad_scale <- do.call(rbind, CGP_grad_scale)
 CGP_grad_scale_time <- do.call(rbind, CGP_grad_scale_time)
-
-visualize(CGP_grad_scale, 1, 1)
 
 
 #######################
@@ -819,8 +818,6 @@ for (df_val in df_list) {
   CMH_df_time <- rbind(CMH_df_time, current_time_record)
 }
 
-visualize(CMH_df, 1, 1)
-
 
 ######################
 #   MH (Varying n)   #
@@ -937,6 +934,3 @@ for (n_val in n_list) {
   current_time_record <- data.frame(n_val = n_val, time_taken = elapsed)
   CMH_n_time <- rbind(CMH_n_time, current_time_record)
 }
-
-visualize(CMH_n, 1, 1)
-
