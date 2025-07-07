@@ -45,7 +45,7 @@ y <- as.vector(rmvnorm(n = 1, sigma = Cov_mat))
 y <- matrix(y, nrow = n, ncol = p, byrow = TRUE)
 
 source('stan/stan_conjugate_prior_model.R')
-if (T) {
+if (F) {
   m_ss.conj_prior <- stan_model(model_code=sim.conj_prior)
   save(m_ss.conj_prior, file = 'stan/conjugate_prior_model.RData')
 } else {
