@@ -19,17 +19,42 @@ for (j in 1:p) {
   dist_tensor[,,j] <- matrix(x_obs[,j], nrow = n, ncol = n) - matrix(x_obs[,j], nrow = n, ncol = n, byrow = T)
 }
 dist_tensor_mat <- matrix(as.vector(dist_tensor), nrow = n^2, ncol = p)
-dist_tensor_mat_reduced <- dist_tensor_mat[
-  upper.tri(matrix(nrow =n, ncol = n), diag = T), ]
+# dist_tensor_mat_reduced <- dist_tensor_mat[
+#   upper.tri(matrix(nrow =n, ncol = n), diag = T), ]
+dist_tensor_mat_reduced_crossprod <- lapply(1:n, 
+                                            function(i) lapply(1:n, function(j) {
+                                              tcrossprod(dist_tensor[i,j,])
+                                            }))
 
-compute_cov_mat_from_C <- function(C, dist_tensor_mat_reduced, n, diagonal_add = .00001) {
-  test_distances <- rowSums((dist_tensor_mat_reduced %*% C) *
-                              dist_tensor_mat_reduced)
-  dist_mat_C <- matrix(nrow = n, ncol = n)
-  dist_mat_C[upper.tri(dist_mat_C, diag = T)] <- test_distances
-  cov_mat <- exp(-dist_mat_C/2)
-  diag(cov_mat) <- diag(cov_mat) + diagonal_add
-  cov_mat
+# compute_cov_mat_from_C <- function(C, dist_tensor_mat_reduced, n, diagonal_add = .00001) {
+#   test_distances <- rowSums((dist_tensor_mat_reduced %*% C) *
+#                               dist_tensor_mat_reduced)
+#   dist_mat_C <- matrix(nrow = n, ncol = n)
+#   dist_mat_C[upper.tri(dist_mat_C, diag = T)] <- test_distances
+#   cov_mat <- exp(-dist_mat_C/2)
+#   diag(cov_mat) <- diag(cov_mat) + diagonal_add
+#   cov_mat
+# }
+
+# replaced compute_cov_mat_from_C with compute_grad_cov_mat_from_C
+compute_grad_cov_mat_from_C <- function(C, dist_tensor_mat, n, diagonal_add = .00001) {
+  test_distances <- matrix(rowSums((dist_tensor_mat %*% C) * dist_tensor_mat), n, n)
+  exp_mat <- exp(-test_distances/2)
+  NA_mat <- matrix(NA, p, p)
+  all_mats <- lapply(1:n, 
+                     function(i) {lapply(1:n, function(j) {
+                       if (j < i) {
+                         return(NA_mat) # for the lower triangle, do not compute, saves computation time
+                       } else {
+                         mat <- - ((C %*% dist_tensor_mat_reduced_crossprod[[i]][[j]] %*% C - C)*exp_mat[i,j])
+                         if (i == j) {
+                           diag(mat) <- diag(mat) + diagonal_add
+                         }
+                         return(mat)
+                       }})
+                     })
+  # combine all matrices into one pn times pn matrix
+  cov_mat <- do.call(rbind, lapply(all_mats, function(x) do.call(cbind, x)))
 }
 
 # We make the eigenvectors randomly; eigenvalues depend on dimension p
@@ -39,10 +64,11 @@ if (grid$type[array_id] == 'full_rank') { # all eigenvalvues nonzero
 } else { # only two nonzero eigenvalues
   C <- 500/p * (W_random %*% diag(exp(c(0, -1, rep(-Inf, p-2)))) %*% t(W_random))
 }
-Cov_mat <- compute_cov_mat_from_C(C, dist_tensor_mat_reduced, n)
-Cov_mat[lower.tri(Cov_mat)] <- t(Cov_mat)[lower.tri(Cov_mat)]
-y <- as.vector(rmvnorm(n = 1, sigma = Cov_mat))
-y <- matrix(y, nrow = n, ncol = p, byrow = TRUE)
+
+Cov_mat <- compute_grad_cov_mat_from_C(C, dist_tensor_mat, n)
+chol_Cov_mat <- chol(Cov_mat)
+y <- t(chol_Cov_mat) %*% rnorm(n * p)
+grad <- matrix(y, nrow = n, ncol = p, byrow = TRUE)
 
 source('stan/stan_conjugate_prior_model.R')
 if (F) {
@@ -56,12 +82,12 @@ n_chains <- 4
 it <- 1500 # number of iterations
 w <- 500 # number of burn in
 
-data_input <- list(y = y, 
+data_input <- list(y = grad, 
                    N = n, 
                    prior_scale = diag(x = 1, nrow = p), 
                    k=p, 
+                   mu0 = rep(0, p),
                    prior_dof = p + grid$add_dof[array_id])
-
 
 cor_inits <- runif(n_chains, 0, .5) # the third chain often starts with really high correlation, leading to bad mixing
 cor_inits_mat <- lapply(cor_inits, function(x) {
