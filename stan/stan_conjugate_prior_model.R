@@ -8,10 +8,10 @@ data {
   vector[k] y[N];
 }
 parameters {
-  cov_matrix[k] Q1;
+  cov_matrix[k] Sigma;
 }
 model {
-  Q1 ~ inv_wishart(prior_dof, prior_scale);
-  for (i in 1:N) y[i] ~ multi_normal(mu0, Q1);
+  Sigma ~ inv_wishart(prior_dof, prior_scale);
+  for (i in 1:N) y[i] ~ multi_normal(mu0, Sigma);
 }
 "

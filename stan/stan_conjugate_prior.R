@@ -93,12 +93,12 @@ cor_inits <- runif(n_chains, 0, .5) # the third chain often starts with really h
 cor_inits_mat <- lapply(cor_inits, function(x) {
   mat <- matrix(x, nrow = p, ncol = p)
   diag(mat) <- 1
-  list('Q1' = mat)
+  list('Sigma' = mat)
 })
 sapply(cor_inits_mat, function(x) min(eigen(x[[1]])$values))
 a_time <- Sys.time()
 out_conj_prior <- sampling(object=m_ss.conj_prior, data = data_input,
-                          pars= c('Q1'), iter = it, chains = n_chains, warmup=w,
+                          pars= c('Sigma'), iter = it, chains = n_chains, warmup=w,
                           init = cor_inits_mat, 
                           cores = n_chains)
 extract_vals <- extract(out_conj_prior) # extract samples
@@ -129,9 +129,9 @@ for (i in 1:length(files)) {
   C_mat[[i]] <- C
   p_vals[i] <- nrow(C)
   #  posterior mean of Sigma
-  posterior_means[[i]] <- apply(extract_vals$Q1, c(2,3), mean) 
+  posterior_means[[i]] <- apply(extract_vals$Sigma, c(2,3), mean) 
   # eigenstructure of sampled C/Sigma matrices
-  Sigma_mats <- extract_vals$Q1
+  Sigma_mats <- extract_vals$Sigma
   true_eigen <- eigen(C, symmetric = T)$vectors[,1]
   true_eigen2 <- eigen(C, symmetric = T)$vectors[,2]
   
