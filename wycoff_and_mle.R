@@ -135,3 +135,66 @@ likelihood_optim <- optim(init_par, likelihood_function,
 par <- likelihood_optim$par
 likelihood_est <- make_C_from_par(par, p)
 likelihood_est
+
+
+######### Add reduced dimension Gaussian process approach
+# this is most similar to Gautier, but not the same
+# In particular, it requires you to choose a desired subspace size, and only generates samples with that rank
+# this is the gamma-dirichlet-wishart version of the approach
+source('stan/stan_edited_model.R')
+
+if (F) {
+  m_ss.dirichlet_wishart_reduce <- stan_model(model_code=sim.ss_dirichlet_wishart_dimreduce)
+  save(m_ss.dirichlet_wishart_reduce, file = 'stan/dirichlet_wishart_reduce_model.RData')
+} else {
+  load('stan/dirichlet_wishart_reduce_model.RData')
+}
+
+# iterations and burn in should be changed to match the other code
+it <- 500 # number of iterations
+w <- 300 # number of burn in
+n_chains <- 4
+C
+prior_gamma_a <- 7
+prior_gamma_b <- .05
+
+(prior_mean <- prior_gamma_a/prior_gamma_b)
+(prior_var <- prior_gamma_a/prior_gamma_b^2)
+# plot(seq(0, 200, length.out = 200),
+#      dgamma(seq(0, 200, length.out = 200), shape = prior_gamma_a, rate = prior_gamma_b),
+#      type = 'l')
+sum(diag(C))
+
+data_input <- list(y = y, N = n, R = diag(x = 1, nrow = p), # prior
+                   k_reduce = 2, # size of reduced space with k_reduce < k
+                   k=p, mu0 = rep(0, n), k1 = 2, 
+                   prior_gamma_a = prior_gamma_a, 
+                   prior_gamma_b = prior_gamma_b,
+                   alpha = rep(1, p),
+                   prior_cor_dof = p + 50, locs = x_obs, 
+                   diag_add = .00001)
+
+
+cor_inits <- runif(n_chains, 0, .1) # the third chain often starts with really high correlation, leading to bad mixing
+cor_inits_mat <- lapply(cor_inits, function(x) {
+  Q1 <- rWishart(1, p+200,diag(p))[,,1]
+  Q1 <- diag(1/sqrt(diag(Q1))) %*% Q1 %*%  diag(1/sqrt(diag(Q1)))
+  list('Q1' = Q1)
+})
+
+a_time <- Sys.time()
+#names(cor_inits_mat) <- rep('Q1', n_chains)
+out_dirichlet <- sampling(object=m_ss.dirichlet_wishart_reduce, data = data_input,
+                          pars= c('Sigma'), iter = it, chains = n_chains, warmup=w,
+                          init = cor_inits_mat, 
+                          cores = n_chains)
+extract_vals <- extract(out_dirichlet)
+summary_vals <- summary(out_dirichlet)
+b_time <- Sys.time()
+time_used <- b_time - a_time
+units(time_used) <- 'mins'
+
+
+
+
+
