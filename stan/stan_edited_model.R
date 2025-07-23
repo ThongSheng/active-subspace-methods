@@ -379,3 +379,85 @@ model {
 }
 "
 
+
+sim.ss_dirichlet_wishart_dimreduce = "
+data {
+  int <lower=0> N;
+  int <lower=0> k;
+  int <lower=0> k_reduce;
+  matrix[k,k] R;
+  vector[N] y;
+  vector[N] mu0;
+  matrix[N,k] locs;
+  vector[k] alpha;
+  real <lower=0> prior_cor_dof;
+  real prior_gamma_a;
+  real prior_gamma_b;
+  real <lower=0> diag_add;
+}
+parameters {
+  cov_matrix[k] Q1;
+  simplex[k] xi;
+  real <lower=0> K;
+}
+transformed parameters {
+  matrix[k,k] Rho_prelim = rep_matrix(0, k, k); 
+  matrix[k,k] Rho; 
+  matrix[k, k] Sigma;
+  cov_matrix[N] Sigma_gp;
+  vector<lower=0>[k] delta1;
+// Rho is the correlation matrix prior, start with a Q1 ~ IW() and its transformed into
+// a correlation matrix with D1*Q1*D1, wehre D1<-diag(delta1), is done with for loops
+  matrix[k, k] U = eigenvectors_sym(Q1);
+  vector[k] Lambda = eigenvalues_sym(Q1);
+  
+  for (n in 1:k_reduce) {
+    Rho_prelim = Rho_prelim + Lambda[n] * col(U,n) * col(U,n)'; 
+  }
+
+  for (i in 1:k) delta1[i] <- 1/sqrt(Rho_prelim[i,i]);
+  for (n in 1:k) {
+    for (m in 1:n) {
+      Rho[m,n] <- delta1[m] * delta1[n] * Rho_prelim[m,n]; 
+    }
+  }
+
+  for (n in 1:k) {
+    for (m in (n+1):k) {
+      Rho[m,n] <- Rho[n,m];
+    }
+  } 
+  
+// compute covariance matrix as: Sigma = K * D*Q*D, where D = diag(delta) 
+  for (n in 1:k) {
+    for (m in 1:n) {
+      Sigma[m,n] <- K * sqrt(xi[m]) * sqrt(xi[n]) * Rho[m,n]; 
+    }
+  }
+  for (n in 1:k) {
+    for (m in (n+1):k) {
+      Sigma[m,n] <- Sigma[n,m];
+    }
+  }
+  
+  for (i in 1:N) {
+    for (m in 1:i) {
+      Sigma_gp[m,i] <- exp(- (locs[i,]- locs[m,]) * Sigma * (locs[i,]- locs[m,])' /2 ); 
+    }
+    Sigma_gp[i,i] <- Sigma_gp[i,i] + diag_add;
+  }
+
+  for (n in 1:N) {
+    for (m in (n+1):N) {
+      Sigma_gp[m,n] <- Sigma_gp[n,m];
+    }
+  } 
+}
+model {
+  Q1 ~ wishart(prior_cor_dof, R);
+  xi ~ dirichlet(alpha);
+  K ~ gamma(prior_gamma_a, prior_gamma_b);
+  y ~ multi_normal(mu0, Sigma_gp);
+}
+"
+
