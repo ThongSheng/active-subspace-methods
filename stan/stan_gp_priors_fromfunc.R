@@ -25,7 +25,7 @@ prior_configs <- list(
     },
     get_inits_func = function(n_chains, p, config) {
       lapply(1:n_chains, function(x) {
-        mat <- matrix(runif(p*p, 0, .5), nrow = p, ncol = p)
+        mat <- matrix(runif(p*p, -.5, .5), nrow = p, ncol = p)
         diag(mat) <- 1
         mat <- crossprod(mat)
         list(Q1 = mat, xi = rep(1/p, p), K = runif(1, 0.1, 10))
@@ -41,7 +41,7 @@ prior_configs <- list(
     ),
     get_specific_data_params_func = function(p, config) {
       list(
-        k_reduce = p - 1,
+        k_reduce = ifelse(p <= 5, 1, 5),
         alpha = rep(1, p),
         prior_cor_dof = p + 50,
         prior_gamma_a = config$default_params$prior_gamma_a,
@@ -50,7 +50,7 @@ prior_configs <- list(
     },
     get_inits_func = function(n_chains, p, config) {
       lapply(1:n_chains, function(x) {
-        mat <- matrix(runif(p*p, 0, .5), nrow = p, ncol = p)
+        mat <- matrix(runif(p*p, -.5, .5), nrow = p, ncol = p)
         diag(mat) <- 1
         mat <- crossprod(mat)
         list(Q1 = mat, xi = rep(1/p, p), K = runif(1, 0.1, 10))
@@ -62,23 +62,23 @@ prior_configs <- list(
     stan_model_string_var = "sim.sslniw_gp_rescale",
     default_params = list(
       prior_rescale_mean = 0,
-      prior_rescale_var = 1
+      prior_rescale_var = log(2)
     ),
     get_specific_data_params_func = function(p, config) {
       list(
-        prior_lgn_mean = rep(0, p - 1),
-        prior_lgn_var = rep(1, p - 1),
-        prior_dof = p + 5,
+        prior_lgn_mean = array(rep(log(.5), p - 1)),
+        prior_lgn_var = array(rep(log(100)^2, p - 1)),
+        prior_dof = p + 3,
         prior_rescale_mean = config$default_params$prior_rescale_mean,
         prior_rescale_var = config$default_params$prior_rescale_var
       )
     },
     get_inits_func = function(n_chains, p, config) {
       lapply(1:n_chains, function(x) {
-        q1_mat <- matrix(runif(p*p, 0, .5), nrow = p, ncol = p)
+        q1_mat <- matrix(runif(p*p, -.5, .5), nrow = p, ncol = p)
         diag(q1_mat) <- 1
         q1_mat <- crossprod(q1_mat)
-        list(Q1 = q1_mat, xi = rnorm(p - 1, 0, 0.1), K = rnorm(1, 0, 0.1))
+        list(Q1 = q1_mat, xi = array(rnorm(p - 1, 0, 0.1)), K = rnorm(1, 0, 0.1))
       })
     }
   )
@@ -93,16 +93,16 @@ prior_configs <- list(
 )
 
 # --- Simulation Grid Definition ---
-array_id <- as.integer(Sys.getenv('THISJOBVALUE'))
 grid <- expand.grid(
-  'p' = c(2, 5, 10, 15, 20),
+  'p' = c(2, 10, 20),
   'type' = c('full_rank', '2d'),
-  'n' = c(25, 75, 125, 175),
-  'seed' = 1:20,
+  'n' = c(20, 100, 150),
+  'seed' = 1:3,
   'prior_choice' = names(prior_configs) 
 )
 
 # Extract parameters for this specific job array run
+array_id <- as.integer(Sys.getenv('THISJOBVALUE'))
 p <- grid$p[array_id]
 n <- grid$n[array_id]
 selected_prior_name <- as.character(grid$prior_choice[array_id])
@@ -110,9 +110,6 @@ set.seed(grid$seed[array_id])
 
 # Get the configuration for the selected prior
 current_prior_config <- prior_configs[[selected_prior_name]]
-if (is.null(current_prior_config)) {
-  stop(paste0("Error: Configuration for prior '", selected_prior_name, "' not found in prior_configs."))
-}
 
 # --- Data Generation  ---
 x_obs <- matrix(ncol = p, nrow = n, runif(p*n))
@@ -200,7 +197,6 @@ data_input <- get_data_input(n,
                              .00001, 
                              specific_data_params)
 
-
 # MCMC initializations
 n_chains <- 4
 it <- 1500
@@ -231,3 +227,108 @@ if (!dir.exists(output_dir)) {
 save_file_name <- paste0(output_dir, selected_prior_name, "_", array_id, '.RData')
 save(extract_vals, summary_vals, C, y, time_used, file = save_file_name)
 q(save = 'no')
+
+
+# After running, process results here
+
+# --- Analysis and Visualization ---
+library(ggplot2)
+library(reshape2)
+
+grid <- expand.grid(
+  'p' = c(2, 10, 20),
+  'type' = c('full_rank', '2d'),
+  'n' = c(20, 100, 150),
+  'seed' = 1:3,
+  'prior_choice' = c("dirichlet_wishart", "dirichlet_wishart_reduce", "lognormal_inverse_wishart")
+)
+
+output_dir <- '/scratch/negishi/angt/simulation_results/' # change this to match
+files <- list.files(output_dir, pattern = "\\.RData$", full.names = TRUE)
+file_ids <- as.integer(gsub(".RData$", "", gsub(".*_", "", files)))
+
+results_list <- list()
+
+for (i in 1:length(files)) {
+  file_id <- file_ids[i]
+  
+  # Load the file
+  load(files[i])
+  
+  # Calculate Frobenius Norm between true C and posterior mean of Sigma
+  posterior_mean_Sigma <- apply(extract_vals$Sigma, c(2, 3), mean)
+  frobenius <- sqrt(sum((C - posterior_mean_Sigma)^2))
+  
+  # Calculate cosine similarity
+  C_vec <- as.vector(C)
+  Sigma_vec <- as.vector(posterior_mean_Sigma)
+  cos_sim_C_Sigma <- abs(sum(C_vec * Sigma_vec) / (sqrt(sum(C_vec^2)) * sqrt(sum(Sigma_vec^2))))
+  
+  # Calculate RMSE
+  rmse <- sqrt(mean((C_vec - Sigma_vec)^2))
+  
+  # Calculate first eigenvalue
+  first_eigenvalue <- eigen(posterior_mean_Sigma)$values[1]
+  
+  # Store results in a list
+  results_list[[i]] <- data.frame(
+    p = grid$p[file_id],
+    n = grid$n[file_id],
+    type = grid$type[file_id],
+    prior_choice = grid$prior_choice[file_id],
+    time_used = as.double(time_used),
+    frobenius = frobenius,
+    cos_sim_C_Sigma = cos_sim_C_Sigma,
+    rmse = rmse,
+    first_eigenvalue = first_eigenvalue
+  )
+}
+
+# Combine the list into a single data frame
+results_df <- do.call(rbind, results_list)
+
+# Plot 1: Time to compute
+ggplot(data = results_df) +
+  geom_boxplot(aes(x = factor(n), y = time_used, color = prior_choice)) +
+  facet_grid(type ~ p, labeller = label_both) +
+  labs(x = 'Sample size (n)', 
+       y = 'Time to compute (minutes)', 
+       title = 'Computation Time') +
+  theme_bw()
+
+# Plot 2: Frobenius Norm between C and posterior mean of Sigma
+ggplot(data = results_df) +
+  geom_boxplot(aes(x = factor(n), y = frobenius, color = prior_choice)) +
+  facet_grid(type ~ p, labeller = label_both) +
+  labs(x = 'Sample size (n)', 
+       y = 'Frobenius Norm', 
+       title = 'Frobenius Norm of Predicted Sigma vs. True C') +
+  theme_bw()
+
+# Plot 3: Cosine Similarity between C and posterior mean of Sigma
+ggplot(data = results_df) +
+  geom_boxplot(aes(x = factor(n), y = cos_sim_C_Sigma, color = prior_choice)) +
+  facet_grid(type ~ p, labeller = label_both) +
+  labs(x = 'Sample size (n)', 
+       y = 'Cosine Similarity',
+       title = 'Cosine Similarity of Predicted Sigma vs. True C') +
+  theme(legend.position = 'bottom') +
+  theme_bw()
+
+# Plot 4: Posterior mean of predicted value RMSE from truth
+ggplot(data = results_df) +
+  geom_boxplot(aes(x = factor(n), y = rmse, color = prior_choice)) +
+  facet_grid(type ~ p, labeller = label_both) +
+  labs(x = 'Sample size (n)', 
+       y = 'RMSE',
+       title = 'Posterior Mean of Predicted Value RMSE from Truth') +
+  theme_bw()
+
+# Plot 5: Posterior mean first eigenvalue
+ggplot(data = results_df) +
+  geom_boxplot(aes(x = factor(n), y = first_eigenvalue, color = prior_choice)) +
+  facet_grid(type ~ p, labeller = label_both) +
+  labs(x = 'Sample size (n)', 
+       y = 'First Eigenvalue',
+       title = 'Posterior Mean First Eigenvalue') +
+  theme_bw()

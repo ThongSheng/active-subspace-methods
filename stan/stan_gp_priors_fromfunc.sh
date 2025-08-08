@@ -9,9 +9,11 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem-per-cpu=1200m
 #SBATCH --time=03:59:00
-#SBATCH --account=standby
+#SBATCH --account=statdept
 #SBATCH --output=/home/%u/stan/logs/%x-%j.log
-#SBATCH --array=000-799
+#SBATCH --array=000-999
+#SBATCH --partition=cpu
+#SBATCH --qos=standby
 
 VALUES=({1..1000}) # negishi has limit that job array can only have 1000 jobs at a time
     # if we want to run more than 1000, can replace this to 1001-2000, ..., then resubmit with --array=000-999
