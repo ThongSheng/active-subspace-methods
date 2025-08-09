@@ -25,7 +25,7 @@ prior_configs <- list(
     },
     get_inits_func = function(n_chains, p, config) {
       lapply(1:n_chains, function(x) {
-        mat <- matrix(runif(p*p, -.5, .5), nrow = p, ncol = p)
+        mat <- matrix(runif(p*p, 0, .5), nrow = p, ncol = p)
         diag(mat) <- 1
         mat <- crossprod(mat)
         list(Q1 = mat, xi = rep(1/p, p), K = runif(1, 0.1, 10))
@@ -50,7 +50,7 @@ prior_configs <- list(
     },
     get_inits_func = function(n_chains, p, config) {
       lapply(1:n_chains, function(x) {
-        mat <- matrix(runif(p*p, -.5, .5), nrow = p, ncol = p)
+        mat <- matrix(runif(p*p, 0, .5), nrow = p, ncol = p)
         diag(mat) <- 1
         mat <- crossprod(mat)
         list(Q1 = mat, xi = rep(1/p, p), K = runif(1, 0.1, 10))
@@ -75,7 +75,7 @@ prior_configs <- list(
     },
     get_inits_func = function(n_chains, p, config) {
       lapply(1:n_chains, function(x) {
-        q1_mat <- matrix(runif(p*p, -.5, .5), nrow = p, ncol = p)
+        q1_mat <- matrix(runif(p*p, 0, .5), nrow = p, ncol = p)
         diag(q1_mat) <- 1
         q1_mat <- crossprod(q1_mat)
         list(Q1 = q1_mat, xi = array(rnorm(p - 1, 0, 0.1)), K = rnorm(1, 0, 0.1))
@@ -275,6 +275,7 @@ for (i in 1:length(files)) {
     p = grid$p[file_id],
     n = grid$n[file_id],
     type = grid$type[file_id],
+    seed = grid$seed[file_id],
     prior_choice = grid$prior_choice[file_id],
     time_used = as.double(time_used),
     frobenius = frobenius,
@@ -306,8 +307,14 @@ ggplot(data = results_df) +
   theme_bw()
 
 # Plot 3: Cosine Similarity between C and posterior mean of Sigma
+line_data <- data.frame(
+  p = c(2, 10, 20),
+  yintercept = c(sqrt(2/pi)/sqrt(2), sqrt(2/pi)/sqrt(10), sqrt(2/pi)/sqrt(20))
+)
+
 ggplot(data = results_df) +
   geom_boxplot(aes(x = factor(n), y = cos_sim_C_Sigma, color = prior_choice)) +
+  geom_hline(data = line_data, aes(yintercept = yintercept), color = "red", linetype = "dashed") +
   facet_grid(type ~ p, labeller = label_both) +
   labs(x = 'Sample size (n)', 
        y = 'Cosine Similarity',
