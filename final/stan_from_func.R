@@ -59,7 +59,7 @@ prior_configs <- list(
     }
   ),
   "lognormal_inverse_wishart" = list(
-    stan_model_name = "stan/lniw_gp_rescale_model.RData",
+    stan_model_name = "stan/testing/lniw_gp_rescale_model.RData",
     stan_model_string_var = "sim.sslniw_gp_rescale",
     default_params = list(
       prior_rescale_mean = 0,
@@ -67,8 +67,8 @@ prior_configs <- list(
     ),
     get_specific_data_params_func = function(p, config) {
       list(
-        prior_lgn_mean = array(rep(log(.5), p - 1)),
-        prior_lgn_var = array(rep(log(1.2)^2, p - 1)),
+        prior_lgn_mean = array(rep((0), p)),
+        prior_lgn_var = array(rep(log(2), p)),
         prior_dof = p + 5,
         prior_rescale_mean = config$default_params$prior_rescale_mean,
         prior_rescale_var = config$default_params$prior_rescale_var
@@ -79,7 +79,7 @@ prior_configs <- list(
         q1_mat <- matrix(runif(p*p, 0, .5), nrow = p, ncol = p)
         diag(q1_mat) <- 1
         q1_mat <- crossprod(q1_mat)
-        list(Q1 = q1_mat, xi = array(rnorm(p - 1, 0, 0.1)), K = rnorm(1, 0, 0.1))
+        list(Q1 = q1_mat, xi = array(rnorm(p, 0, 0.1)), K = rnorm(1, 0, 0.1))
       })
     }
   )
