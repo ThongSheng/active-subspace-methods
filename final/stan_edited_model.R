@@ -6,8 +6,8 @@ data {
   vector[N] y;
   vector[N] mu0;
   matrix[N,k] locs;
-  vector[k-1] prior_lgn_mean;
-  vector[k-1] prior_lgn_var;
+  vector[k] prior_lgn_mean;
+  vector[k] prior_lgn_var;
   real <lower=0> prior_dof;
   real prior_rescale_mean;
   real prior_rescale_var;
@@ -15,7 +15,7 @@ data {
 }
 parameters {
   cov_matrix[k] Q1;
-  vector[k-1] xi;
+  vector[k] xi;
   real K;
 }
 transformed parameters {
@@ -44,11 +44,11 @@ transformed parameters {
   } 
 
 // compute covariance matrix as: Sigma = K * D*Q*D, where D = diag(delta) 
-  for (i in 1:(k-1))  delta[i] <- exp( xi[i] );
-  delta[k] <- exp( 1 - sum(xi));
+  for (i in 1:k)  delta[i] <- exp( xi[i] );
+  //delta[k] <- exp( 1 - sum(xi));
   for (n in 1:k) {
     for (m in 1:n) {
-      Sigma[m,n] <- exp(K) * delta[m] * delta[n] * Rho[m,n]; 
+      Sigma[m,n] <- exp(K) * delta[m] * delta[n] * Rho[m,n]/sum(delta)^2; 
     }
   }
   for (n in 1:k) {
@@ -75,13 +75,14 @@ transformed parameters {
 }
 model {
   Q1 ~ inv_wishart(prior_dof, R);
-  for ( i in 1:(k-1)) {
+  for ( i in 1:k) {
       xi[i] ~ normal(prior_lgn_mean[i], sqrt(prior_lgn_var[i]));
   }
   K ~ normal(prior_rescale_mean, sqrt(prior_rescale_var));
   y ~ multi_normal(mu0, Sigma_gp);
 }
 "
+
 
 
 sim.ss_dirichlet_wishart = "
