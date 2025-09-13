@@ -258,3 +258,80 @@ model {
   for (i in 1:N) y[i] ~ multi_normal(mu0, Sigma);
 }
 "
+
+
+sim.gp_reduce = "
+data {
+  int <lower=0> N;
+  int <lower=0> k;
+  int <lower=0> k_reduce;
+  vector[N] y;
+  vector[N] mu0;
+  matrix[N,k] locs;
+  real <lower=0> diag_add;
+}
+parameters {
+  vector[k_reduce] log_theta_par;
+  vector[k_reduce * k - k_reduce *(k_reduce - 1)/2] theta_mat;
+}
+transformed parameters {
+  matrix[k,k_reduce] W; 
+  matrix[k,k] Sigma; 
+  matrix[N,k_reduce] Z;
+  cov_matrix[N] Sigma_gp;
+
+  
+  
+  {
+    matrix[k,k] Q = diag_matrix(rep_vector(1.0, k)); 
+
+    int ell = 0;
+    for (i in 1:k_reduce) {
+      int r = ell;
+
+      ell = r + k - i + 1;
+      vector[ell - r] v = theta_mat[(r+1):ell];
+      vector[ell - r] u = v;
+      real sgn = v[1] >= 0 ? 1.0 : -1.0;
+      u[1] =  u[1] + sgn * norm2(v);
+      u = u/norm2(u);
+      
+      matrix[ell - r , ell - r] Hhat = -sgn * (diag_matrix(rep_vector(1.0, ell - r)) - 2.0 * u * u');
+      matrix[k, k] H = diag_matrix(rep_vector(1.0, k));
+      int start_idx = k - (ell - r) + 1;
+      H[start_idx:k, start_idx:k] = Hhat;
+      Q = H * Q;
+    }
+    W = Q[,1:k_reduce];
+  } 
+  Z = locs * W;
+
+  for (i in 1:N) {
+    for (m in 1:i) {
+      real dist = 0;
+      for (zz in 1:k_reduce) {
+        dist = dist + square(Z[i,zz] - Z[m,zz]) / square(exp(log_theta_par[zz]));
+      }
+      Sigma_gp[m,i] = exp(-dist/2); 
+    }
+    Sigma_gp[i,i] = Sigma_gp[i,i] + diag_add;
+  }
+
+  for (n in 1:N) {
+    for (m in (n+1):N) {
+      Sigma_gp[m,n] = Sigma_gp[n,m];
+    }
+  }
+  
+  Sigma = W * diag_matrix(1/(2*(exp(log_theta_par))^2)) * W';
+}
+model {
+  for ( i in 1:k_reduce) {
+      log_theta_par[i] ~ normal(0, 1);
+  }
+  for ( i in 1:(k_reduce * k - k_reduce *(k_reduce - 1)/2)) {
+      theta_mat[i] ~ normal(0, 1);
+  }
+  y ~ multi_normal(mu0, Sigma_gp);
+}
+"
