@@ -1,12 +1,5 @@
-library(mvtnorm)
-library(rstan)
+library(patchwork)
 
-# Each prior configuration now only needs:
-# - stan_model_name: Path to the compiled STAN model RData file
-# - default_params: A list of default prior parameters for this model
-# - get_specific_data_params_func: A function to return prior-specific parameters for data_input
-# - get_inits_func: A function to return initial values for STAN parameters
-# - stan_model_string_var: The name of the model defined in STAN_edited_model.R
 prior_configs <- list(
   "dirichlet_wishart" = list(
     stan_model_name = "final/dirichlet_wishart_model.RData",
@@ -91,10 +84,8 @@ grid <- expand.grid(
   'func' = c('determ_full', 'determ_2d', 'GP_full', 'GP_2d'),
   'prior_choice' = c("dirichlet_wishart", "gp_reduce", "lognormal_inverse_wishart")
 )
-
-# Extract parameters for this specific job array run
-array_id <- as.integer(Sys.getenv('THISJOBVALUE'))
-p <- grid$p[array_id]
+array_id <- 544
+p <- 4
 n <- grid$n[array_id]
 selected_prior_name <- as.character(grid$prior_choice[array_id])
 set.seed(grid$seed[array_id])
@@ -232,11 +223,98 @@ units(time_used) <- 'mins'
 extract_vals <- extract(out_model)
 summary_vals <- summary(out_model)
 
-# Save results
-output_dir <- '/scratch/negishi/angt/stan_results/'
-if (!dir.exists(output_dir)) {
-  dir.create(output_dir, recursive = TRUE)
-}
-save_file_name <- paste0(output_dir, selected_prior_name, "_", array_id, '.RData')
-save(extract_vals, summary_vals, C, y, time_used, file = save_file_name)
-q(save = 'no')
+
+
+
+# Visuals for 3.4
+C
+(pred_C <- apply(extract_vals$Sigma, c(2, 3), mean))
+
+# Heatmaps
+melted_C <- melt(C)
+melted_pred_C <- melt(pred_C)
+colnames(melted_C) <- colnames(melted_pred_C) <- c("Row", "Column", "Value")
+
+p1 <- ggplot(melted_C, aes(x = Column, y = Row, fill = Value)) +
+  geom_tile(color = "black") +
+  scale_y_reverse() + 
+  scale_fill_gradient(low = "white", high = "tomato", limits = c(-20, 110)) +
+  labs(title = "Heatmap of true C") +
+  theme_minimal()
+
+p2 <- ggplot(melted_pred_C, aes(x = Column, y = Row, fill = Value)) +
+  geom_tile(color = "black") +
+  scale_y_reverse() + 
+  scale_fill_gradient(low = "white", high = "tomato", limits = c(-20, 110)) +
+  labs(title = "Heatmap of predicted C") +
+  theme_minimal()
+
+(heat <- p1 + p2)
+ggsave("Desktop/heatmaps.png", plot = heat, width = 8, height = 4, units = "in", dpi = 300)
+
+# Posterior Distribution
+p1 <- ggplot(data.frame(Value = extract_vals$Sigma[,1,1]), aes(x = Value)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  geom_vline(xintercept = C[1,1], linetype = "dashed", color = "red") +
+  labs(title = "Predicted C[1,1]", x = "", y = "") +
+  ylim(0, 850) +
+  theme_minimal()
+
+p2 <- ggplot(data.frame(Value = extract_vals$Sigma[,1,2]), aes(x = Value)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  geom_vline(xintercept = C[1,2], linetype = "dashed", color = "red") +
+  labs(title = "Predicted C[1,2]", x = "", y = "") +
+  ylim(0, 850) +
+  theme_minimal()
+
+p3 <- ggplot(data.frame(Value = extract_vals$Sigma[,1,3]), aes(x = Value)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  geom_vline(xintercept = C[1,3], linetype = "dashed", color = "red") +
+  labs(title = "Predicted C[1,3]", x = "", y = "") +
+  ylim(0, 850) +
+  theme_minimal()
+
+p4 <- ggplot(data.frame(Value = extract_vals$Sigma[,1,4]), aes(x = Value)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  geom_vline(xintercept = C[1,4], linetype = "dashed", color = "red") +
+  labs(title = "Predicted C[1,4]", x = "", y = "") +
+  ylim(0, 850) +
+  theme_minimal()
+
+(posterior <- p1 + p2 + p3 + p4)
+ggsave("Desktop/posterior.png", plot = posterior, width = 8, height = 4, units = "in", dpi = 300)
+
+# Trace plots
+p1 <- ggplot(data.frame(Value = extract_vals$Sigma[1:1000,1,1]), aes(x = 1:1000, y = Value)) +
+  geom_line() +
+  geom_hline(yintercept = C[1,1], linetype = "dashed", color = "red") +
+  labs(title = "Trace of Predicted C[1,1]", x = "Iterations", y="") +
+  theme_minimal()
+
+p2 <- ggplot(data.frame(Value = extract_vals$Sigma[1:1000,1,2]), aes(x = 1:1000, y = Value)) +
+  geom_line() +
+  geom_hline(yintercept = C[1,2], linetype = "dashed", color = "red") +
+  labs(title = "Trace of Predicted C[1,2]", x = "Iterations", y="") +
+  theme_minimal()
+
+p3 <- ggplot(data.frame(Value = extract_vals$Sigma[1:1000,1,3]), aes(x = 1:1000, y = Value)) +
+  geom_line() +
+  geom_hline(yintercept = C[1,3], linetype = "dashed", color = "red") +
+  labs(title = "Trace of Predicted C[1,3]", x = "Iterations", y="") +
+  theme_minimal()
+
+p4 <- ggplot(data.frame(Value = extract_vals$Sigma[1:1000,1,4]), aes(x = 1:1000, y = Value)) +
+  geom_line() +
+  geom_hline(yintercept = C[1,4], linetype = "dashed", color = "red") +
+  labs(title = "Trace of Predicted C[1,4]", x = "Iterations", y="") +
+  theme_minimal()
+
+(trace <- p1 + p2 + p3 + p4)
+ggsave("Desktop/trace.png", plot = trace, width = 8, height = 4, units = "in", dpi = 300)
+
+# Cosine similarity
+C_eigen <- eigen(C)$vectors[,1]
+Sigma_eigen <- eigen(pred_C)$vector[,1]
+(cos_sim_C_Sigma <- abs(sum(C_eigen * Sigma_eigen) / (sqrt(sum(C_eigen^2)) * sqrt(sum(Sigma_eigen^2)))))
+
+# 
