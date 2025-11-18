@@ -7,7 +7,7 @@ library(activegp)
 grid <- expand.grid(
   'p' = c(2, 10, 20),
   'n' = c(20, 100, 150),
-  'seed' = 1:3,
+  'seed' = 1:30,
   'func' = c('determ_full', 'determ_2d', 'GP_full', 'GP_2d'),
   'method' = c('bass', 'wycoff', 'mle')
 )
@@ -45,7 +45,7 @@ if (grid$func[array_id] == 'determ_full') {
   if (p > 1) {
     C[upper.tri(C) | lower.tri(C)] <- 1/p
   }
-  y <- apply(x_obs, 1, f)
+  y <- apply(x_obs, 1, f) + rnorm(n)
   
 } else if (grid$func[array_id] == 'determ_2d') {
   f <- function(x) {sum(x[1:2]^2)/sqrt(p)}
@@ -54,7 +54,7 @@ if (grid$func[array_id] == 'determ_full') {
     C[1,1] <- C[2,2] <- 4/(3*p)
     C[1,2] <- C[2,1] <- 1/p
   }
-  y <- apply(x_obs, 1, f)  
+  y <- apply(x_obs, 1, f) + rnorm(n)
   
 } else if (grid$func[array_id] == 'GP_full') {
   W_random <- eigen(crossprod(matrix(rnorm(p * p), nrow = p, ncol = p)))$vectors
@@ -113,10 +113,10 @@ a_time <- Sys.time()
 pred_C <- NULL
 
 if (method == 'bass') {
-  mod_bass <- BASS::bass(x_obs, y, verbose=FALSE)
+  mod_bass <- BASS::bass(x_obs, y, h2=0.1, verbose=FALSE)
   pred_C <- C_bass(mod_bass)
 } else if (method == 'wycoff') {
-  prior_scale_matrix <- diag(x = 300/p, nrow = p)
+  prior_scale_matrix <- diag(x = 1, nrow = p)
   Cov_mat_use <- compute_cov_mat_from_C(prior_scale_matrix, dist_tensor_mat_reduced, n)
   Cov_mat_use[lower.tri(Cov_mat_use)] <- t(Cov_mat_use)[lower.tri(Cov_mat_use)]
   
@@ -131,7 +131,7 @@ if (method == 'bass') {
   }
 } else if (method == 'mle') {
   init_matrix <- matrix(nrow = p, ncol = p, 1)
-  diag(init_matrix) <- 300/p
+  diag(init_matrix) <- 2/p
   init_par <- log(init_matrix[upper.tri(init_matrix, diag = T)])
   make_C_from_par(init_par, p)
   
