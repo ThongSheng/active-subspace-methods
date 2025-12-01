@@ -1,5 +1,5 @@
-library(patchwork)
-library(purrr)
+library(rstan)
+library(ggplot2)
 
 prior_configs <- list(
   "dirichlet_wishart" = list(
@@ -218,8 +218,12 @@ summary_vals <- summary(out_model)
 
 
 
-
 # Visuals for 4.3
+detach("package:rstan", unload = TRUE)
+library(reshape2)
+library(dplyr)
+library(tidyr)
+
 C
 (pred_C <- matrix(colMeans(extract_vals[, , 1:16], dims=2), ncol = 4))
 
@@ -234,7 +238,8 @@ p1 <- ggplot(melted_C, aes(x = Column, y = Row, fill = Value)) +
   scale_fill_gradient2(low = "steelblue", high = "tomato", limits = c(-20, 110)) +
   labs(title = "Heatmap of true C") +
   theme_minimal() + 
-  theme(text = element_text(family = 'Arial'))
+  theme(text = element_text(family = 'Arial')) +
+  coord_equal()
 
 p2 <- ggplot(melted_pred_C, aes(x = Column, y = Row, fill = Value)) +
   geom_tile(color = "black") +
@@ -242,29 +247,25 @@ p2 <- ggplot(melted_pred_C, aes(x = Column, y = Row, fill = Value)) +
   scale_fill_gradient2(low = "steelblue", high = "tomato", limits = c(-20, 110)) +
   labs(title = "Heatmap of predicted C") +
   theme_minimal() +
-  theme(text = element_text(family = 'Arial'))
+  theme(text = element_text(family = 'Arial')) +
+  coord_equal()
 
 (heat <- p1 + p2)
 ggsave("Desktop/heatmaps.png", plot = heat, width = 10, height = 3.5, units = "in", dpi = 300)
 
 # Posterior Distribution
-make_plot <- function(i) {
-  row_idx <- ceiling(i / 4)
-  col_idx <- i - (row_idx - 1) * 4
-  
-  ggplot(data.frame(Value = as.vector(extract_vals[,,i])), aes(x = Value)) +
-    geom_histogram(bins = 30, fill = "skyblue", color = "black") +
-    geom_vline(xintercept = C[row_idx, col_idx], linetype = "dashed", color = "red", linewidth = 0.7) +
-    labs(
-      title = paste0("C[", row_idx, ",", col_idx, "]"),
-      x = "", y = ""
-    ) +
-    ylim(0, 850) +
-    theme_minimal() +
-    theme(text = element_text(family = "Arial"))
-}
+plot_data <- melt(extract_vals) %>%
+  filter(parameters != "lp__") %>%
+  extract(parameters, into = c("Row", "Column"), regex = "\\[(\\d+),(\\d+)\\]", convert = TRUE)
 
-(posterior <- wrap_plots(map(1:16, make_plot), ncol = 4))
+(posterior <- ggplot(plot_data, aes(x = value)) +
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  geom_vline(data = melted_C, aes(xintercept = Value), linetype = "dashed", color = "red") +
+  facet_grid(Row ~ Column, labeller = label_both) + 
+  labs(x="", y="") +
+  theme_minimal() +
+  theme(text = element_text(family = "Arial")))
+
 ggsave("Desktop/posterior.png", plot = posterior, width = 10, height = 5, units = "in", dpi = 300)
 
 # Trace plots
