@@ -245,7 +245,7 @@ p2 <- ggplot(melted_pred_C, aes(x = Column, y = Row, fill = Value)) +
   geom_tile(color = "black") +
   scale_y_reverse() + 
   scale_fill_gradient2(low = "steelblue", high = "tomato", limits = c(-20, 110)) +
-  labs(title = "Heatmap of predicted C") +
+  labs(title = expression(paste("Heatmap of estimated ", hat(C)))) +
   theme_minimal() +
   theme(text = element_text(family = 'Arial')) +
   coord_equal()
