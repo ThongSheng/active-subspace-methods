@@ -52,13 +52,13 @@ prior_configs <- list(
     stan_model_name = "final/lniw_gp_rescale_model.RData",
     stan_model_string_var = "sim.sslniw_gp_rescale",
     default_params = list(
-      prior_rescale_mean = 0,
-      prior_rescale_var = log(2)
+      prior_rescale_mean = .8,
+      prior_rescale_var = 1.6
     ),
     get_specific_data_params_func = function(p, config) {
       list(
-        prior_lgn_mean = array(rep(0, p)),
-        prior_lgn_var = array(rep(log(2), p)),
+        prior_lgn_mean = array(rep(1.4, p)),
+        prior_lgn_var = array(rep(.1, p)),
         prior_dof = p + 5,
         prior_rescale_mean = config$default_params$prior_rescale_mean,
         prior_rescale_var = config$default_params$prior_rescale_var
