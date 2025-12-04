@@ -28,6 +28,7 @@ prior_configs <- list(
         mat <- matrix(runif(p*p, 0, .5), nrow = p, ncol = p)
         diag(mat) <- 1
         mat <- crossprod(mat)
+        mat <- diag(1/sqrt(diag(mat))) %*% mat %*% diag(1/sqrt(diag(mat)))
         list(Q1 = mat, xi = rep(1/p, p), K = runif(1, 0.1, 10))
       })
     }
@@ -45,6 +46,8 @@ prior_configs <- list(
         mat <- matrix(runif(p*p, 0, .5), nrow = p, ncol = p)
         diag(mat) <- 1
         mat <- crossprod(mat)
+        mat <- diag(1/sqrt(diag(mat))) %*% mat %*% diag(1/sqrt(diag(mat)))
+        mat
       })
     }
   ),
@@ -69,6 +72,7 @@ prior_configs <- list(
         q1_mat <- matrix(runif(p*p, 0, .5), nrow = p, ncol = p)
         diag(q1_mat) <- 1
         q1_mat <- crossprod(q1_mat)
+        q1_mat <- diag(1/sqrt(diag(q1_mat))) %*% q1_mat %*% diag(1/sqrt(diag(q1_mat)))
         list(Q1 = q1_mat, xi = array(rnorm(p, 0, 0.1)), K = rnorm(1, 0, 0.1))
       })
     }
