@@ -54,7 +54,8 @@ for (i in 1:length(files)) {
     time_used = as.double(time_used),
     frobenius = frobenius,
     cos_sim = cos_sim,
-    diff_eigenvalue = diff_eigenvalue
+    diff_eigenvalue = diff_eigenvalue,
+    n_eff = NA
   )
 }
 
@@ -105,6 +106,9 @@ for (i in 1:length(files)) {
   C_est_eigenvalue <- ifelse(sum(diag(pred_C)) == 0, NA, eigen(C_est_norm)$values[1])
   diff_eigenvalue <- abs(C_eigenvalue - C_est_eigenvalue)
   
+  # Additional piece for STAN: n_eff
+  n_eff <- mean(head(summary_vals$summary[,9], -1)) # mean of all n_eff
+  
   # Store results in a list
   stan_results_list[[i]] <- data.frame(
     d = grid$p[file_id],
@@ -115,7 +119,8 @@ for (i in 1:length(files)) {
     time_used = as.double(time_used),
     frobenius = frobenius,
     cos_sim = cos_sim,
-    diff_eigenvalue = diff_eigenvalue
+    diff_eigenvalue = diff_eigenvalue,
+    n_eff = n_eff
   )
 }
 
@@ -170,4 +175,15 @@ ggsave("Desktop/cosine.png", plot = cosine, width = 10, height = 5, units = "in"
   theme_bw() +
   theme(text = element_text(family = 'Arial')))
 ggsave("Desktop/first_eigen.png", plot = first_eigen, width = 10, height = 5, units = "in", dpi = 300)
+
+# Plot 5: Effective sample size
+(ess <- ggplot(data = results_df) +
+    geom_boxplot(aes(x = factor(n), y = n_eff, color = method)) +
+    facet_grid(d ~ func, labeller = label_both) +
+    labs(x = 'Sample size (n)', 
+         y = 'Effective sample size (out of 4000)') +
+    ylim(0, 4000) +
+    theme_bw() +
+    theme(text = element_text(family = 'Arial')))
+ggsave("Desktop/ess.png", plot = ess, width = 10, height = 5, units = "in", dpi = 300)
 
