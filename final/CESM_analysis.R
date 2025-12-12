@@ -208,9 +208,9 @@ if (F) {
   }
   
   save(diagonal_add, pred_C_wycoff, pred_C_wycoff2, mod_bass, pred_C_bass,
-       pred_C_likelihood, file = 'CESM_nonstan_all2_new_like.RData')
+       pred_C_likelihood, file = 'CESM_nonstan_final.RData')
 } else {
-  load(file = '~/active-subspace-methods/CESM_nonstan_all2_new_like.RData')
+  load(file = '~/active-subspace-methods/CESM_nonstan_final.RData')
 }
 library(fields)
 
@@ -224,7 +224,7 @@ library(rstan)
 
 prior_configs <- list(
   "dirichlet_wishart" = list(
-    stan_model_name = "~/active-subspace-methods/stan/dirichlet_wishart_with_var_model.RData",
+    stan_model_name = "~/active-subspace-methods/final/dirichlet_wishart_with_var_model.RData",
     stan_model_string_var = "sim.ss_dirichlet_wishart", 
     default_params = list(
       prior_gamma_a = 7,
@@ -267,7 +267,7 @@ dist_tensor_mat_reduced <- dist_tensor_mat[upper.tri(matrix(nrow =n, ncol = n), 
 # --- STAN Model Loading ---
 stan_model_object <- NULL
 stan_model_path <- current_prior_config$stan_model_name
-stan_code_file_master <- "/home/anyarger/active-subspace-methods/stan/stan_edited_model_with_var.R"
+stan_code_file_master <- "/home/anyarger/active-subspace-methods/final/stan_edited_model_with_var.R"
 
 # Ensure the 'stan' directory exists
 if (!dir.exists("stan")) {
@@ -407,9 +407,9 @@ Sampled_Sigmas <- array(extract_vals[,,1:(p^2)], dim = c((it - w)*4, p, p))
 sampled_sigma2 <- as.vector(extract_vals[,,p^2+1])
 
 save(extract_vals, summary_vals, out_model,
-     diagonal_add, file = '~/active-subspace-methods/CESM_all.RData')
+     diagonal_add, file = 'CESM_all.RData')
 q(save = 'no')
-load('~/active-subspace-methods/CESM_all.RData')
+load('CESM_all.RData')
 
 pairs(out_model, pars = c('Sigma[1,1]', 'Sigma[1,2]'))
 pairs(out_model, pars = c('Sigma[1,1]', 'Sigma[1,2]', 'Sigma[2,2]'))
@@ -615,3 +615,5 @@ ggplot(data = C_df  %>% filter(type !='Wycoff') %>%
                      axis.title = element_blank()) + 
   labs(fill = 'Normalized\nC estimate', x = '', y = 'Column')
 ggsave('CESM_C_compare.png', height = 4 * 1.3, width = 4.5 * 1.3)
+
+
