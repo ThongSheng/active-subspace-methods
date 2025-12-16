@@ -385,6 +385,22 @@ vectors2 <- t(sapply(1:nrow(vectors2), function(x) {
 }))
 
 
+AS <- t(sapply(1:(dim(extract_vals$Sigma)[1]), function(x) {
+  vectors2[x,]^2 * values[x,2] + vectors[x,]^2 * values[x,1]
+}))
+colnames(AS) <- colnames(e3sm_parameters)
+
+ggplot(data = data.frame(AS) %>% tidyr::pivot_longer(cols = colnames(e3sm_parameters)) %>%
+         mutate(name = factor(name, levels = colnames(e3sm_parameters)))) +
+  geom_boxplot(aes(x = name, y = value, group = name), outlier.size = .5)+
+  theme_bw() + theme(text = element_text(family = 'Arial')) + 
+  labs(x = 'Input parameter',
+       y = 'Posterior samples of activity scores\nbased on two dimensions')
+ggsave('E3SM_activity_score.png', height = 4*.8, width = 6.8*.8)
+
+
+
+
 prop_var <- t(sapply(1:(dim(extract_vals$Sigma)[1]), function(x) {
   cumsum( values[x,])/sum( values[x,])
 }))
