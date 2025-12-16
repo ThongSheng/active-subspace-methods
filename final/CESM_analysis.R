@@ -1,6 +1,6 @@
 load('~/active-subspace-methods/CESM_data.RData')
 load('~/active-subspace-methods/CESM_vars.RData')
-load('~/active-subspace-methods/CESM_summary.RData')
+
 library(mvtnorm)
 library(BASS)
 library(concordance)
@@ -496,6 +496,22 @@ vectors2 <- t(sapply(1:nrow(vectors2), function(x) {
   }
 }))
 
+AS <- t(sapply(1:(dim(Sampled_Sigmas)[1]), function(x) {
+  vectors2[x,]^2 * values[x,2] + vectors[x,]^2 * values[x,1]
+}))
+colnames(AS) <- colnames(x_obs)
+
+ggplot(data = data.frame(AS) %>% tidyr::pivot_longer(cols = colnames(x_obs)) %>%
+         mutate(name = factor(name, levels = colnames(x_obs)))) +
+  geom_boxplot(aes(x = name, y = value, group = name))+
+  theme_bw() + theme(text = element_text(family = 'Arial'), 
+                     axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1)) + 
+  labs(x = 'Input parameter',
+       y = 'Posterior samples of activity scores\nbased on two dimensions')
+ggsave('CESM_activity_score.png', height = 4*1.4, width = 6.8*1.4)
+
+
+
 
 library(tidyr)
 library(dplyr)
@@ -560,6 +576,42 @@ ggplot() +
          color = guide_colorbar(order = 10))
 ggsave('CESM_RESTOM_biplot.png', height = 4*.9, width = 6.8*.9)
 
+extract_vals_trace <- rstan::extract(out_model, permuted = F)
+Sigma_samples <- extract_vals_trace[,,1:(45)^2]
+library(ggplot2)
+library(dplyr)
+Sigma_df <- data.frame(value = as.vector(Sigma_samples), 
+                       chain = rep(1:4, each = dim(Sigma_samples)[1]),
+                       Row = rep(rep(1:45, each = 45), each = n_chains*dim(Sigma_samples)[1]),
+                       Column = rep(rep(1:45, times = 45), each = n_chains*dim(Sigma_samples)[1]),
+                       order = 1:600)
+
+ggplot(data = Sigma_df %>%filter(chain == 1, Row %in% 1:10, 
+                                 Column %in% 1:10), aes(x = order, y = value)) + 
+  geom_line(linewidth = .2) + 
+  facet_grid(Row~Column, labeller = label_both, switch = 'y') +
+  labs(x = 'MCMC iteration', y = 'Estimated entry of C') +
+  theme_bw() +
+  theme(text = element_text(family = 'Arial'))
+ggsave('CESM_sampling.png', height = 5.3*1.2, width = 7*1.2)
+
+
+other_df <- data.frame(value = as.vector(extract_vals_trace[,,((45)^2 + 1):((45)^2 + 2)]), 
+                       Chain = rep(1:4, each = dim(Sigma_samples)[1]),
+                       Variable = rep(c('sigma2', 'tau2'), each = n_chains*dim(Sigma_samples)[1]),
+                       order = 1:600)
+
+
+ggplot(data = other_df , aes(x = order, y = value)) + 
+  geom_line(linewidth = .2) + 
+  facet_grid(Variable~Chain, labeller = label_both, switch = 'y', scales = 'free_y') +
+  labs(x = 'MCMC iteration', y = 'Sampled value') +
+  theme_bw() +
+  theme(text = element_text(family = 'Arial'))
+ggsave('CESM_sampling_sigma2_tau2.png', height = 5.3 *.8, width = 7*.8)
+
+
+                  
 C_df <- data.frame(C_value = c(as.vector(pred_C_wycoff),
                                as.vector(pred_C_wycoff2),
                                as.vector(pred_C_likelihood),
@@ -585,7 +637,7 @@ C_df <- data.frame(C_value = c(as.vector(pred_C_wycoff),
 
 
 ggplot(data = C_df  %>% filter(type !='Wycoff') %>%
-         mutate(type = ifelse(type == 'Wycoff2', 'Wycoff', type)), aes(x = row, column, fill = C_value_normalized)) + 
+         mutate(type = ifelse(type == 'Wycoff2', 'GP conditional', type)), aes(x = row, column, fill = C_value_normalized)) + 
   geom_tile(color = 'grey40') +
   facet_wrap(~type) + 
   coord_equal() +
@@ -604,7 +656,7 @@ ggsave('CESM_C_compare.png', height = 4.5 * 1.3, width = 5.7 * 1.3)
 
 
 ggplot(data = C_df  %>% filter(type !='Wycoff') %>%
-         mutate(type = ifelse(type == 'Wycoff2', 'Wycoff', type)), 
+         mutate(type = ifelse(type == 'Wycoff2', 'GP conditional', type)), 
        aes(x = row, column, fill = C_value_normalized2)) + 
   geom_raster() +
   facet_wrap(~type) + 
