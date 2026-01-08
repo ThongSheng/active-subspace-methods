@@ -272,29 +272,26 @@ ggsave("Desktop/posterior.png", plot = posterior, width = 10, height = 5, units 
 p1 <- ggplot(data.frame(Value = extract_vals[,1,1]), aes(x = 1:1000, y = Value)) +
   geom_line() +
   geom_hline(yintercept = C[1,1], linetype = "dashed", color = "red") +
-  labs(title = "C[1,1] (R_hat = 1.00, n_eff = 1981)", x = "Iterations", y="") +
+  labs(title = paste0("C[1,1] (R_hat = ", round(summary_vals$summary[1,10]), ", n_eff = ", round(summary_vals$summary[1,9]), ")"), x = "Iterations", y="") +
   theme_minimal() +
   theme(text = element_text(family = 'Arial'))
 
 p2 <- ggplot(data.frame(Value = extract_vals[,1,2]), aes(x = 1:1000, y = Value)) +
   geom_line() +
   geom_hline(yintercept = C[1,2], linetype = "dashed", color = "red") +
-  labs(title = "C[1,2] (R_hat = 1.00, n_eff = 2326)", x = "Iterations", y="") +
-  theme_minimal() +
+  labs(title = paste0("C[1,2] (R_hat = ", round(summary_vals$summary[2,10]), ", n_eff = ", round(summary_vals$summary[2,9]), ")"), x = "Iterations", y="") +  theme_minimal() +
   theme(text = element_text(family = 'Arial'))
 
 p3 <- ggplot(data.frame(Value = extract_vals[,1,3]), aes(x = 1:1000, y = Value)) +
   geom_line() +
   geom_hline(yintercept = C[1,3], linetype = "dashed", color = "red") +
-  labs(title = "C[1,3] (R_hat = 1.00, n_eff = 3074)", x = "Iterations", y="") +
-  theme_minimal() +
+  labs(title = paste0("C[1,3] (R_hat = ", round(summary_vals$summary[3,10]), ", n_eff = ", round(summary_vals$summary[3,9]), ")"), x = "Iterations", y="") +  theme_minimal() +
   theme(text = element_text(family = 'Arial'))
 
 p4 <- ggplot(data.frame(Value = extract_vals[,1,4]), aes(x = 1:1000, y = Value)) +
   geom_line() +
   geom_hline(yintercept = C[1,4], linetype = "dashed", color = "red") +
-  labs(title = "C[1,4] (R_hat = 1.00, n_eff = 1936)", x = "Iterations", y="") +
-  theme_minimal() +
+  labs(title = paste0("C[1,4] (R_hat = ", round(summary_vals$summary[4,10]), ", n_eff = ", round(summary_vals$summary[4,9]), ")"), x = "Iterations", y="") +  theme_minimal() +
   theme(text = element_text(family = 'Arial'))
 
 (trace <- p1 + p2 + p3 + p4)
@@ -308,27 +305,27 @@ Sigma_eigen <- eigen(pred_C)$vector[,1]
 # Marginal scatterplot of input vs output
 p1 <- ggplot(data = data.frame(x_obs, y), aes(x = x_obs[,1], y = y)) +
   geom_point() +
-  labs(x = "X1", y = "Y") +
+  labs(x = expression(theta[i1]), y = expression(Y[i])) +
   theme_bw() +
   theme(text = element_text(family = 'Arial'))
 
 p2 <- ggplot(data = data.frame(x_obs, y), aes(x = x_obs[,2], y = y)) +
   geom_point() +
-  labs(x = "X2", y = "Y") +
+  labs(x = expression(theta[i2]), y = expression(Y[i])) +
   theme_bw() +
   theme(text = element_text(family = 'Arial'))
 
 p3 <- ggplot(data = data.frame(x_obs, y), aes(x = x_obs[,3], y = y)) +
   geom_point() +
-  labs(x = "X3", y = "Y") +
+  labs(x = expression(theta[i3]), y = expression(Y[i])) +
   theme_bw() +
   theme(text = element_text(family = 'Arial'))
 
 p4 <- ggplot(data = data.frame(x_obs, y), aes(x = x_obs[,4], y = y)) +
   geom_point() +
-  labs(x = "X4", y = "Y") +
+  labs(x = expression(theta[i4]), y = expression(Y[i])) +
   theme_bw() +
   theme(text = element_text(family = 'Arial'))
 
 (scatter <- p1 + p2 + p3 + p4 + plot_layout(ncol=4))
-ggsave("Desktop/marg_scat.png", plot = scatter, width = 10, height = 3.5, units = "in", dpi = 300)
+ggsave("Desktop/marg_scat.png", plot = scatter, width = 10, height = 3, units = "in", dpi = 300)
